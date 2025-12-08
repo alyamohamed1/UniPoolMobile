@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Unipool",
+    "slug": "unipool-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#7F7CAF",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.unipool.mobile"
+    },
+    "android": {
+      "package": "com.unipool.mobile"
+    }
+  }
+}

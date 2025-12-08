@@ -1,0 +1,21 @@
+# Create all screen files at once
+cd src/screens
+
+# Create each file with placeholder export
+echo "export { default } from './PlaceholderScreen';" > RiderMainScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > DriverMainScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > SearchDriversScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > DriverDetailsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > DriverRequestsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > ProfileScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > EditProfileScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > ChatScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > RidesScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > NotificationsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > RatingsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > RewardsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > SafetyScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > SafetyReportScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > SettingsScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > RateDriverScreen.tsx
+echo "export { default } from './PlaceholderScreen';" > RatePassengersScreen.tsx
