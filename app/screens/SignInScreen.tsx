@@ -8,16 +8,46 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { authService } from '../../src/services/auth.service';
 
 export default function SignInScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSignIn = () => {
-    navigation.navigate('RoleSelection');
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await authService.signIn(email, password);
+
+      setLoading(false);
+
+      if (result.success && result.userData) {
+        // Check user role and navigate
+        if (!result.userData.role) {
+          navigation.navigate('RoleSelection');
+        } else if (result.userData.role === 'driver') {
+          navigation.navigate('DriverMain');
+        } else {
+          navigation.navigate('RiderMain');
+        }
+      } else {
+        Alert.alert('Error', result.error || 'Failed to sign in');
+      }
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   return (

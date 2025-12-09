@@ -1,19 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useAuth } from '../../src/context/AuthContext';
+import { authService } from '../../src/services/auth.service';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RoleSelectionScreen({ navigation }: any) {
-  const handleRoleSelection = async (role: 'rider' | 'driver') => {
-    await AsyncStorage.setItem('userRole', role);
-    navigation.navigate(role === 'rider' ? 'RiderMain' : 'DriverMain');
+  const { user, refreshUserData } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  const handleRoleSelection = async (role: 'driver' | 'rider') => {
+    if (!user) {
+      Alert.alert('Error', 'You must be signed in');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await authService.updateUserRole(user.uid, role);
+
+      if (result.success) {
+        // Refresh user data to get updated role
+        await refreshUserData();
+        
+        // Navigate based on role
+        if (role === 'driver') {
+          navigation.navigate('DriverMain');
+        } else {
+          navigation.navigate('RiderMain');
+        }
+      } else {
+        Alert.alert('Error', result.error || 'Failed to update role');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
