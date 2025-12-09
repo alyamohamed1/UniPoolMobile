@@ -1,3 +1,4 @@
+// app/screens/SignUpScreen.tsx - UPDATED with Firebase Backend
 import React, { useState } from 'react';
 import {
   View,
@@ -8,9 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { authService } from '../../src/services/auth.service';
 
 export default function SignUpScreen({ navigation }: any) {
   const [formData, setFormData] = useState({
@@ -20,13 +24,61 @@ export default function SignUpScreen({ navigation }: any) {
     universityId: '',
     phone: '',
   });
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSignUp = () => {
-    navigation.navigate('RoleSelection');
+  const handleSignUp = async () => {
+    // Validation
+    if (!formData.name || !formData.email || !formData.password || !formData.universityId || !formData.phone) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
+    if (!formData.email.endsWith('@aubh.edu.bh')) {
+      Alert.alert('Error', 'Please use your AUBH email address (@aubh.edu.bh)');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await authService.signUp(
+        formData.email,
+        formData.password,
+        formData.name,
+        formData.universityId,
+        formData.phone
+      );
+
+      setLoading(false);
+
+      if (result.success) {
+        Alert.alert(
+          'Success!',
+          'Account created successfully. Please select your role.',
+          [
+            {
+              text: 'Continue',
+              onPress: () => navigation.navigate('RoleSelection'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to create account');
+      }
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Sign up error:', error);
+    }
   };
 
   return (
@@ -55,19 +107,22 @@ export default function SignUpScreen({ navigation }: any) {
                     placeholderTextColor="#9CA3AF"
                     value={formData.name}
                     onChangeText={(value) => handleChange('name', value)}
+                    editable={!loading}
                   />
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Email</Text>
+                  <Text style={styles.label}>AUBH Email</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="example@university.edu"
+                    placeholder="student@aubh.edu.bh"
                     placeholderTextColor="#9CA3AF"
                     value={formData.email}
                     onChangeText={(value) => handleChange('email', value)}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
                   />
                 </View>
 
@@ -75,11 +130,13 @@ export default function SignUpScreen({ navigation }: any) {
                   <Text style={styles.label}>Password</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="********"
+                    placeholder="At least 6 characters"
                     placeholderTextColor="#9CA3AF"
                     value={formData.password}
                     onChangeText={(value) => handleChange('password', value)}
                     secureTextEntry
+                    autoCapitalize="none"
+                    editable={!loading}
                   />
                 </View>
 
@@ -87,10 +144,11 @@ export default function SignUpScreen({ navigation }: any) {
                   <Text style={styles.label}>University ID</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="U12345678"
+                    placeholder="202012345"
                     placeholderTextColor="#9CA3AF"
                     value={formData.universityId}
                     onChangeText={(value) => handleChange('universityId', value)}
+                    editable={!loading}
                   />
                 </View>
 
@@ -98,21 +156,33 @@ export default function SignUpScreen({ navigation }: any) {
                   <Text style={styles.label}>Phone Number</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="+1 (555) 123-4567"
+                    placeholder="+973 1234 5678"
                     placeholderTextColor="#9CA3AF"
                     value={formData.phone}
                     onChangeText={(value) => handleChange('phone', value)}
                     keyboardType="phone-pad"
+                    editable={!loading}
                   />
                 </View>
 
-                <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp}>
-                  <Text style={styles.signUpButtonText}>SIGN UP</Text>
+                <TouchableOpacity 
+                  style={[styles.signUpButton, loading && styles.buttonDisabled]} 
+                  onPress={handleSignUp}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.signUpButtonText}>SIGN UP</Text>
+                  )}
                 </TouchableOpacity>
 
                 <View style={styles.signInContainer}>
                   <Text style={styles.signInText}>Already have an account? </Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
+                  <TouchableOpacity 
+                    onPress={() => navigation.navigate('SignIn')}
+                    disabled={loading}
+                  >
                     <Text style={styles.signInLink}>Sign in</Text>
                   </TouchableOpacity>
                 </View>
@@ -192,6 +262,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 24,
     marginBottom: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   signUpButtonText: {
     color: '#FFFFFF',
