@@ -1,51 +1,102 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  FlatList,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const DUMMY_DRIVERS = [
-  {
-    id: '1',
-    name: 'Sarah Johnson',
-    rating: 4.9,
-    reviews: 124,
-    car: 'Toyota Camry',
-    price: '$5',
-    seats: 3,
-  },
-  {
-    id: '2',
-    name: 'Mike Williams',
-    rating: 5.0,
-    reviews: 89,
-    car: 'Honda Civic',
-    price: '$4',
-    seats: 2,
-  },
-];
+import { useAuth } from '../../src/context/AuthContext';
+import { rideService, Ride } from '../../src/services/ride.service';
 
 export default function SearchDriversScreen({ navigation }: any) {
-  const renderDriver = ({ item }: any) => (
-    <TouchableOpacity 
-      style={styles.driverCard}
-      onPress={() => navigation.navigate('DriverDetails', { id: item.id })}
-    >
-      <View style={styles.driverAvatar}>
-        <Text style={styles.avatarText}>👤</Text>
-      </View>
-      <View style={styles.driverInfo}>
-        <Text style={styles.driverName}>{item.name}</Text>
-        <Text style={styles.driverCar}>🚗 {item.car}</Text>
-        <View style={styles.ratingRow}>
-          <Text style={styles.rating}>⭐ {item.rating}</Text>
-          <Text style={styles.reviews}>({item.reviews} reviews)</Text>
+  const { user } = useAuth();
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadRides = async () => {
+    try {
+      const result = await rideService.getAvailableRides();
+
+      if (result.success && result.rides) {
+        setRides(result.rides);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to load rides');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Load rides error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRides();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadRides();
+  };
+
+  const handleRidePress = (ride: Ride) => {
+    navigation.navigate('DriverDetails', { ride });
+  };
+
+  const renderRide = ({ item }: { item: Ride }) => {
+    // Get driver's initials for avatar
+    const initials = item.driverName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
+
+    return (
+      <TouchableOpacity
+        style={styles.driverCard}
+        onPress={() => handleRidePress(item)}
+      >
+        <View style={styles.driverAvatar}>
+          <Text style={styles.avatarText}>{initials}</Text>
         </View>
+
+        <View style={styles.driverInfo}>
+          <Text style={styles.driverName}>{item.driverName}</Text>
+          <Text style={styles.route}>
+            {item.from} → {item.to}
+          </Text>
+          <Text style={styles.schedule}>
+            {item.date} at {item.time}
+          </Text>
+          <View style={styles.ratingRow}>
+            <Text style={styles.rating}>⭐ {item.driverRating || 5.0}</Text>
+          </View>
+        </View>
+
+        <View style={styles.driverMeta}>
+          <Text style={styles.price}>{item.price} BHD</Text>
+          <Text style={styles.seats}>
+            {item.availableSeats} {item.availableSeats === 1 ? 'seat' : 'seats'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#7F7CAF" />
+        <Text style={styles.loadingText}>Loading rides...</Text>
       </View>
-      <View style={styles.driverMeta}>
-        <Text style={styles.price}>{item.price}</Text>
-        <Text style={styles.seats}>💺 {item.seats} seats</Text>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  } 
 
   return (
     <SafeAreaView style={styles.container}>
@@ -56,15 +107,26 @@ export default function SearchDriversScreen({ navigation }: any) {
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Available Drivers</Text>
+        <Text style={styles.headerTitle}>Available Rides</Text>
         <View style={styles.placeholder} />
       </View>
 
       <FlatList
-        data={DUMMY_DRIVERS}
-        renderItem={renderDriver}
-        keyExtractor={(item) => item.id}
+        data={rides} // ✅ CHANGED FROM DUMMY_DRIVERS
+        renderItem={renderRide} // ✅ CHANGED FROM renderDriver
+        keyExtractor={(item) => item.id!}
         contentContainerStyle={styles.list}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>🚗</Text>
+            <Text style={styles.emptyText}>No rides available</Text>
+            <Text style={styles.emptySubtext}>
+              Check back later or post your own ride!
+            </Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -74,6 +136,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
+  },
+  center: { // ✅ ADDED MISSING STYLE
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: { // ✅ ADDED
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6B7280',
   },
   header: {
     flexDirection: 'row',
@@ -115,6 +187,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   driverAvatar: {
     width: 60,
@@ -126,7 +203,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: {
-    fontSize: 30,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   driverInfo: {
     flex: 1,
@@ -137,8 +216,13 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 4,
   },
-  driverCar: {
+  route: { 
     fontSize: 14,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  schedule: { 
+    fontSize: 13,
     color: '#6B7280',
     marginBottom: 4,
   },
@@ -164,9 +248,35 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#7F7CAF',
+    marginBottom: 4,
   },
   seats: {
     fontSize: 12,
     color: '#6B7280',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  emptyContainer: { 
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyIcon: {
+    fontSize: 60,
+    marginBottom: 16,
+  },
+  emptyText: { 
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  emptySubtext: { 
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

@@ -9,43 +9,134 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../../src/context/AuthContext';
+import { rideService } from '../../src/services/ride.service';
+import { getCurrentLocation, getAddressFromCoords } from '../../src/utils/location';
 
 export default function PostRideScreen({ navigation }: any) {
+  const { user, userData } = useAuth();
+  
+  const [pickupLocation, setPickupLocation] = useState({
+    address: '',
+    latitude: 0,
+    longitude: 0,
+  });
+  const [dropoffLocation, setDropoffLocation] = useState({
+    address: '',
+    latitude: 0,
+    longitude: 0,
+  });
+  
   const [rideData, setRideData] = useState({
-    pickupLocation: '',
-    dropoffLocation: '',
     date: '',
     time: '',
     seats: '4',
     pricePerSeat: '',
     notes: '',
   });
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (field: string, value: string) => {
     setRideData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePostRide = () => {
-    // Validate fields
-    if (!rideData.pickupLocation || !rideData.dropoffLocation || !rideData.time || !rideData.seats) {
-      Alert.alert('Missing Information', 'Please fill in all required fields');
+  const updatePickupAddress = (text: string) => {
+    setPickupLocation((prev) => ({ ...prev, address: text }));
+  };
+
+  const updateDropoffAddress = (text: string) => {
+    setDropoffLocation((prev) => ({ ...prev, address: text }));
+  };
+
+  const useCurrentLocation = async () => {
+    try {
+      const coords = await getCurrentLocation();
+      if (coords) {
+        const address = await getAddressFromCoords(coords.latitude, coords.longitude);
+        setPickupLocation({
+          address,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+        });
+        Alert.alert('Success', `Current location: ${address}`);
+      } else {
+        Alert.alert('Error', 'Could not get your location');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to get location. Make sure location is enabled.');
+    }
+  };
+
+  const handlePostRide = async () => {
+    if (!user || !userData) {
+      Alert.alert('Error', 'You must be signed in');
       return;
     }
 
-    // Here you would save the ride to your backend/database
-    Alert.alert(
-      'Ride Posted!',
-      'Your ride has been posted successfully. You will receive notifications when riders request to join.',
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('DriverMain'),
-        },
-      ]
-    );
+    if (!pickupLocation.address || !dropoffLocation.address) {
+      Alert.alert('Error', 'Please enter pickup and dropoff locations');
+      return;
+    }
+
+    if (!rideData.date || !rideData.time || !rideData.seats) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    const finalPickupLat = pickupLocation.latitude || 26.0667; 
+    const finalPickupLng = pickupLocation.longitude || 50.5577;
+    const finalDropoffLat = dropoffLocation.latitude || 26.0778;
+    const finalDropoffLng = dropoffLocation.longitude || 50.5688;
+
+    setLoading(true);
+
+    try {
+      const result = await rideService.createRide({
+        driverId: user.uid,
+        driverName: userData.name,
+        driverPhone: userData.phone,
+        driverRating: userData.rating,
+        from: pickupLocation.address,
+        to: dropoffLocation.address,
+        pickupLat: finalPickupLat,
+        pickupLng: finalPickupLng,
+        dropoffLat: finalDropoffLat,
+        dropoffLng: finalDropoffLng,
+        date: rideData.date,
+        time: rideData.time,
+        totalSeats: parseInt(rideData.seats),
+        availableSeats: parseInt(rideData.seats),
+        price: rideData.pricePerSeat ? parseFloat(rideData.pricePerSeat) : 0,
+        notes: rideData.notes,
+        status: 'active',
+      });
+
+      setLoading(false);
+
+      if (result.success) {
+        Alert.alert(
+          'Success!',
+          'Your ride has been posted',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('DriverMain'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to post ride');
+      }
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Post ride error:', error);
+    }
   };
 
   return (
@@ -88,10 +179,18 @@ export default function PostRideScreen({ navigation }: any) {
                     style={styles.input}
                     placeholder="e.g., Campus Building A"
                     placeholderTextColor="#9CA3AF"
-                    value={rideData.pickupLocation}
-                    onChangeText={(value) => handleChange('pickupLocation', value)}
+                    value={pickupLocation.address}
+                    onChangeText={updatePickupAddress}
+                    editable={!loading}
                   />
                 </View>
+                <TouchableOpacity
+                  style={styles.locationButton}
+                  onPress={useCurrentLocation}
+                  disabled={loading}
+                >
+                  <Text style={styles.locationButtonText}>📍 Use Current Location</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.inputGroup}>
@@ -102,8 +201,9 @@ export default function PostRideScreen({ navigation }: any) {
                     style={styles.input}
                     placeholder="e.g., Downtown Mall"
                     placeholderTextColor="#9CA3AF"
-                    value={rideData.dropoffLocation}
-                    onChangeText={(value) => handleChange('dropoffLocation', value)}
+                    value={dropoffLocation.address}
+                    onChangeText={updateDropoffAddress}
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -118,10 +218,11 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>📅</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="MM/DD/YYYY"
+                    placeholder="YYYY-MM-DD (e.g., 2024-12-15)"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.date}
                     onChangeText={(value) => handleChange('date', value)}
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -132,10 +233,11 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>🕐</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., 3:00 PM"
+                    placeholder="HH:MM (e.g., 15:00)"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.time}
                     onChangeText={(value) => handleChange('time', value)}
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -155,6 +257,7 @@ export default function PostRideScreen({ navigation }: any) {
                         rideData.seats === num.toString() && styles.seatButtonActive,
                       ]}
                       onPress={() => handleChange('seats', num.toString())}
+                      disabled={loading}
                     >
                       <Text
                         style={[
@@ -170,16 +273,17 @@ export default function PostRideScreen({ navigation }: any) {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Price per Seat (optional)</Text>
+                <Text style={styles.label}>Price per Seat (BHD, optional)</Text>
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputIcon}>💵</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., $5"
+                    placeholder="e.g., 5"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.pricePerSeat}
                     onChangeText={(value) => handleChange('pricePerSeat', value)}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    editable={!loading}
                   />
                 </View>
               </View>
@@ -194,16 +298,22 @@ export default function PostRideScreen({ navigation }: any) {
                   onChangeText={(value) => handleChange('notes', value)}
                   multiline
                   numberOfLines={4}
+                  editable={!loading}
                 />
               </View>
             </View>
           </View>
 
           <TouchableOpacity 
-            style={styles.postButton}
+            style={[styles.postButton, loading && styles.buttonDisabled]}
             onPress={handlePostRide}
+            disabled={loading}
           >
-            <Text style={styles.postButtonText}>POST RIDE</Text>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.postButtonText}>POST RIDE</Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -214,22 +324,20 @@ export default function PostRideScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F3F4F6',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   backIcon: {
     fontSize: 24,
@@ -250,13 +358,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoCard: {
-    flexDirection: 'row',
     backgroundColor: '#E0F2FE',
     margin: 16,
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#7DD3FC',
+    flexDirection: 'row',
     alignItems: 'center',
   },
   infoIcon: {
@@ -267,7 +373,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#0369A1',
-    lineHeight: 20,
   },
   form: {
     padding: 16,
@@ -282,7 +387,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,
@@ -294,14 +399,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
   },
   inputIcon: {
     fontSize: 20,
-    marginRight: 12,
+    marginRight: 8,
   },
   input: {
     flex: 1,
@@ -310,28 +415,28 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+    paddingTop: 12,
     backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 12,
-    padding: 16,
-    height: 100,
-    textAlignVertical: 'top',
   },
   seatsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    justifyContent: 'space-between',
   },
   seatButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: '#E5E7EB',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   seatButtonActive: {
     backgroundColor: '#3A85BD',
@@ -345,24 +450,31 @@ const styles = StyleSheet.create({
   seatButtonTextActive: {
     color: '#FFFFFF',
   },
-  postButton: {
+  locationButton: {
+    marginTop: 8,
+    padding: 12,
     backgroundColor: '#3A85BD',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  locationButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  postButton: {
     margin: 16,
-    padding: 18,
+    backgroundColor: '#3A85BD',
+    padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   postButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });
