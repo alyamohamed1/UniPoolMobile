@@ -14,10 +14,17 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.unipool.mobile"
+      "bundleIdentifier": "com.unipool.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to show nearby rides"
+      }
     },
     "android": {
-      "package": "com.unipool.mobile"
+      "package": "com.unipool.mobile",
+       "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     }
   }
 }

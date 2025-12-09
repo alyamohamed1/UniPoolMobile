@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,161 +6,165 @@ import {
   StyleSheet,
   FlatList,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const DUMMY_REQUESTS = [
-  {
-    id: '1',
-    rider: 'John Smith',
-    rating: 4.8,
-    totalRides: 24,
-    from: 'Campus Building A',
-    to: 'Downtown Mall',
-    pickupTime: '3:00 PM',
-    seats: 1,
-    message: 'Hi! I need to get to the mall for shopping. Thanks!',
-  },
-  {
-    id: '2',
-    rider: 'Emma Wilson',
-    rating: 5.0,
-    totalRides: 89,
-    from: 'Campus Building A',
-    to: 'Downtown Mall',
-    pickupTime: '3:00 PM',
-    seats: 2,
-    message: 'Going with a friend, need 2 seats please.',
-  },
-  {
-    id: '3',
-    rider: 'Mike Johnson',
-    rating: 4.6,
-    totalRides: 15,
-    from: 'Campus Building A',
-    to: 'Airport Terminal',
-    pickupTime: '3:00 PM',
-    seats: 1,
-    message: 'Can you drop me at the airport? Will tip extra!',
-  },
-];
+import { useAuth } from '../../src/context/AuthContext';
+import { bookingService, Booking } from '../../src/services/booking.service';
 
 export default function DriverRequestsScreen({ navigation }: any) {
-  const [requests, setRequests] = useState(DUMMY_REQUESTS);
+  const { user } = useAuth();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleAccept = (requestId: string, riderName: string) => {
-    Alert.alert(
-      'Accept Request',
-      `Accept ride request from ${riderName}?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Accept',
-          onPress: () => {
-            setRequests(requests.filter(r => r.id !== requestId));
-            Alert.alert('Success', `You accepted ${riderName}'s request. They have been notified.`);
-          },
-        },
-      ]
-    );
+  const loadBookings = async () => {
+    if (!user) return;
+
+    try {
+      const result = await bookingService.getDriverBookings(user.uid);
+
+      if (result.success && result.bookings) {
+        setBookings(result.bookings);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to load bookings');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Load bookings error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const handleDecline = (requestId: string, riderName: string) => {
+  useEffect(() => {
+    loadBookings();
+  }, [user]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadBookings();
+  };
+
+  const handleCancelBooking = (bookingId: string) => {
     Alert.alert(
-      'Decline Request',
-      `Decline ride request from ${riderName}?`,
+      'Cancel Booking',
+      'Are you sure you want to cancel this booking?',
       [
         {
-          text: 'Cancel',
+          text: 'No',
           style: 'cancel',
         },
         {
-          text: 'Decline',
+          text: 'Yes, Cancel',
           style: 'destructive',
-          onPress: () => {
-            setRequests(requests.filter(r => r.id !== requestId));
-            Alert.alert('Request Declined', `You declined ${riderName}'s request.`);
+          onPress: async () => {
+            try {
+              if (!user) return;
+
+              const result = await bookingService.cancelBooking(bookingId, user.uid);
+
+              if (result.success) {
+                Alert.alert('Success', 'Booking cancelled successfully');
+                loadBookings();
+              } else {
+                Alert.alert('Error', result.error || 'Failed to cancel booking');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'An unexpected error occurred');
+            }
           },
         },
       ]
     );
   };
 
-  const renderRequest = ({ item }: any) => (
-    <View style={styles.requestCard}>
-      {/* Rider Info Header */}
-      <View style={styles.requestHeader}>
-        <View style={styles.riderInfo}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
+  const renderBooking = ({ item }: { item: Booking }) => {
+    return (
+      <View style={styles.requestCard}>
+        <View style={styles.requestHeader}>
+          <View style={styles.riderInfo}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {item.riderName
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.riderDetails}>
+              <Text style={styles.riderName}>{item.riderName}</Text>
+              {item.riderPhone && (
+                <Text style={styles.totalRides}>📞 {item.riderPhone}</Text>
+              )}
+            </View>
           </View>
-          <View style={styles.riderDetails}>
-            <Text style={styles.riderName}>{item.rider}</Text>
-            <View style={styles.riderStats}>
-              <Text style={styles.rating}>⭐ {item.rating}</Text>
-              <Text style={styles.totalRides}>• {item.totalRides} rides</Text>
+          <View style={styles.seatsInfo}>
+            <Text style={styles.seatsNumber}>
+              {item.status === 'confirmed' ? '✓' : 'X'}
+            </Text>
+            <Text style={styles.seatsLabel}>
+              {item.status.toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.routeContainer}>
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>📍</Text>
+            <View>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeText}>{item.from}</Text>
+            </View>
+          </View>
+
+          <View style={styles.routeLine} />
+
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>🎯</Text>
+            <View>
+              <Text style={styles.routeLabel}>Dropoff</Text>
+              <Text style={styles.routeText}>{item.to}</Text>
             </View>
           </View>
         </View>
-        <View style={styles.seatsInfo}>
-          <Text style={styles.seatsNumber}>{item.seats}</Text>
-          <Text style={styles.seatsLabel}>seat{item.seats > 1 ? 's' : ''}</Text>
-        </View>
-      </View>
 
-      {/* Route Info */}
-      <View style={styles.routeContainer}>
-        <View style={styles.routeItem}>
-          <Text style={styles.routeIcon}>📍</Text>
-          <View>
-            <Text style={styles.routeLabel}>Pickup</Text>
-            <Text style={styles.routeText}>{item.from}</Text>
-          </View>
+        <View style={styles.timeContainer}>
+          <Text style={styles.timeIcon}>📅</Text>
+          <Text style={styles.timeText}>
+            {item.date} at {item.time}
+          </Text>
         </View>
-        <View style={styles.routeLine} />
-        <View style={styles.routeItem}>
-          <Text style={styles.routeIcon}>🎯</Text>
-          <View>
-            <Text style={styles.routeLabel}>Drop-off</Text>
-            <Text style={styles.routeText}>{item.to}</Text>
-          </View>
-        </View>
-      </View>
 
-      {/* Time */}
-      <View style={styles.timeContainer}>
-        <Text style={styles.timeIcon}>🕐</Text>
-        <Text style={styles.timeText}>Requested pickup at {item.pickupTime}</Text>
-      </View>
-
-      {/* Message */}
-      {item.message && (
         <View style={styles.messageContainer}>
-          <Text style={styles.messageLabel}>Message:</Text>
-          <Text style={styles.messageText}>{item.message}</Text>
+          <Text style={styles.messageLabel}>Price</Text>
+          <Text style={styles.messageText}>{item.price} BHD</Text>
         </View>
-      )}
 
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity 
-          style={styles.declineButton}
-          onPress={() => handleDecline(item.id, item.rider)}
-        >
-          <Text style={styles.declineText}>✕ Decline</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.acceptButton}
-          onPress={() => handleAccept(item.id, item.rider)}
-        >
-          <Text style={styles.acceptText}>✓ Accept</Text>
-        </TouchableOpacity>
+        {item.status === 'confirmed' && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.declineButton}
+              onPress={() => handleCancelBooking(item.id!)}
+            >
+              <Text style={styles.declineText}>Cancel Booking</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-    </View>
-  );
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.emptyState}>
+        <ActivityIndicator size="large" color="#7F7CAF" />
+        <Text style={styles.emptySubtext}>Loading bookings...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -171,29 +175,23 @@ export default function DriverRequestsScreen({ navigation }: any) {
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Ride Requests</Text>
+        <Text style={styles.headerTitle}>Booking Requests</Text>
         <View style={styles.placeholder} />
       </View>
 
-      {requests.length > 0 && (
-        <View style={styles.infoBar}>
-          <Text style={styles.infoText}>
-            {requests.length} pending request{requests.length > 1 ? 's' : ''}
-          </Text>
-        </View>
-      )}
-
       <FlatList
-        data={requests}
-        renderItem={renderRequest}
-        keyExtractor={(item) => item.id}
+        data={bookings}
+        keyExtractor={(item) => item.id!}
+        renderItem={renderBooking}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>📨</Text>
-            <Text style={styles.emptyText}>No pending requests</Text>
+            <Text style={styles.emptyIcon}>📋</Text>
+            <Text style={styles.emptyText}>No bookings yet</Text>
             <Text style={styles.emptySubtext}>
-              Requests will appear here when riders want to join your ride
+              When riders book your rides, they'll appear here
             </Text>
           </View>
         }
@@ -202,6 +200,7 @@ export default function DriverRequestsScreen({ navigation }: any) {
   );
 }
 
+// ✅ KEEP YOUR EXACT STYLESHEET - NO CHANGES!
 const styles = StyleSheet.create({
   container: {
     flex: 1,
