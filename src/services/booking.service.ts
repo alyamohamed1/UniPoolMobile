@@ -31,7 +31,7 @@ export interface Booking {
   date: string;
   time: string;
   price: number;
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   bookedAt: Date | Timestamp;
 }
 

@@ -1,69 +1,157 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   FlatList,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const DUMMY_RIDES = [
-  {
-    id: '1',
-    driver: 'Sarah Johnson',
-    from: 'Campus Building A',
-    to: 'Downtown Mall',
-    date: 'Dec 5, 2025',
-    time: '10:30 AM',
-    price: '$5',
-    status: 'completed',
-  },
-  {
-    id: '2',
-    driver: 'Mike Williams',
-    from: 'Dorm Hall',
-    to: 'Airport',
-    date: 'Dec 3, 2025',
-    time: '3:00 PM',
-    price: '$15',
-    status: 'completed',
-  },
-];
+import { useAuth } from '../../src/context/AuthContext';
+import { bookingService, Booking } from '../../src/services/booking.service';
 
 export default function RidesScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('past');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const renderRideItem = ({ item }: any) => (
-    <View style={styles.rideCard}>
-      <View style={styles.rideHeader}>
-        <Text style={styles.rideName}>🚗 {item.driver}</Text>
-        <Text style={styles.ridePrice}>{item.price}</Text>
-      </View>
-      
-      <View style={styles.routeContainer}>
-        <View style={styles.routeItem}>
-          <Text style={styles.routeIcon}>📍</Text>
-          <Text style={styles.routeText}>{item.from}</Text>
-        </View>
-        <View style={styles.routeLine} />
-        <View style={styles.routeItem}>
-          <Text style={styles.routeIcon}>🎯</Text>
-          <Text style={styles.routeText}>{item.to}</Text>
-        </View>
-      </View>
+  const loadBookings = async () => {
+    if (!user) return;
 
-      <View style={styles.rideFooter}>
-        <Text style={styles.rideDate}>{item.date} • {item.time}</Text>
-        <TouchableOpacity
-          style={styles.rateButton}
-          onPress={() => navigation.navigate('RateDriver', { id: item.id })}
-        >
-          <Text style={styles.rateButtonText}>Rate</Text>
-        </TouchableOpacity>
+    try {
+      const result = await bookingService.getRiderBookings(user.uid);
+
+      if (result.success && result.bookings) {
+        setBookings(result.bookings);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to load rides');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred');
+      console.error('Load rides error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBookings();
+  }, [user]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadBookings();
+  };
+
+  const handleCancelRide = (bookingId: string) => {
+    Alert.alert(
+      'Cancel Ride',
+      'Are you sure you want to cancel this ride?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!user) return;
+
+              const result = await bookingService.cancelBooking(bookingId, user.uid);
+
+              if (result.success) {
+                Alert.alert('Success', 'Ride cancelled successfully');
+                loadBookings(); // Refresh list
+              } else {
+                Alert.alert('Error', result.error || 'Failed to cancel ride');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'An unexpected error occurred');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderRideItem = ({ item }: { item: Booking }) => {
+    const isUpcoming = item.status === 'confirmed';
+    const isPast = item.status === 'completed' || item.status === 'cancelled';
+
+    return (
+      <View style={styles.rideCard}>
+        <View style={styles.rideHeader}>
+          <Text style={styles.rideName}>🚗 {item.driverName}</Text>
+          <Text style={styles.ridePrice}>{item.price} BHD</Text>
+        </View>
+        
+        <View style={styles.routeContainer}>
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>📍</Text>
+            <Text style={styles.routeText}>{item.from}</Text>
+          </View>
+          <View style={styles.routeLine} />
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>🎯</Text>
+            <Text style={styles.routeText}>{item.to}</Text>
+          </View>
+        </View>
+
+        <View style={styles.rideFooter}>
+          <Text style={styles.rideDate}>{item.date} • {item.time}</Text>
+          
+          {item.status === 'confirmed' && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => handleCancelRide(item.id!)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status === 'completed' && (
+            <TouchableOpacity
+              style={styles.rateButton}
+              onPress={() => navigation.navigate('RateDriver', { bookingId: item.id })}
+            >
+              <Text style={styles.rateButtonText}>Rate</Text>
+            </TouchableOpacity>
+          )}
+
+          {item.status === 'cancelled' && (
+            <View style={styles.cancelledBadge}>
+              <Text style={styles.cancelledText}>Cancelled</Text>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
+
+  // Filter bookings based on active tab
+  const filteredBookings = bookings.filter((booking) => {
+    if (activeTab === 'upcoming') {
+      return booking.status === 'confirmed';
+    } else {
+      return booking.status === 'completed' || booking.status === 'cancelled';
+    }
+  });
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#7F7CAF" />
+        <Text style={styles.loadingText}>Loading your rides...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -98,10 +186,12 @@ export default function RidesScreen({ navigation }: any) {
       </View>
 
       <FlatList
-        data={activeTab === 'past' ? DUMMY_RIDES : []}
+        data={filteredBookings}
         renderItem={renderRideItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id!}
         contentContainerStyle={styles.list}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🚗</Text>
@@ -113,6 +203,14 @@ export default function RidesScreen({ navigation }: any) {
                 ? 'Book a ride to get started!'
                 : 'Your ride history will appear here'}
             </Text>
+            {activeTab === 'upcoming' && (
+              <TouchableOpacity
+                style={styles.searchButton}
+                onPress={() => navigation.navigate('SearchDrivers')}
+              >
+                <Text style={styles.searchButtonText}>Search Rides</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -124,6 +222,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6B7280',
   },
   header: {
     flexDirection: 'row',
@@ -249,6 +358,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  cancelButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: '#EF4444',
+    borderRadius: 16,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cancelledBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+  },
+  cancelledText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
@@ -268,5 +399,17 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     paddingHorizontal: 40,
+    marginBottom: 24,
+  },
+  searchButton: {
+    backgroundColor: '#7F7CAF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
