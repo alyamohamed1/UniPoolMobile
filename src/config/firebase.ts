@@ -9,10 +9,9 @@ const firebaseConfig = {
   projectId: "unipool-910a3",
   storageBucket: "unipool-910a3.firebasestorage.app",
   messagingSenderId: "484920674284",
-  appId: "1:484920674284:web:7c63cf0ab5ca51c907e2c9"
+  appId: "1:484920674284:ios:f97a9ab8c9956fa907e2c9"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);

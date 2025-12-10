@@ -1,4 +1,3 @@
-// src/services/ride.service.ts
 import {
   collection,
   addDoc,
@@ -101,7 +100,7 @@ export const rideService = {
   },
 
   /**
-   * Get all available rides for riders to browse
+   * Get all available rides for riders to browse - FIXED WITHOUT COMPOSITE INDEX
    */
   async getAvailableRides(): Promise<{
     success: boolean;
@@ -109,22 +108,24 @@ export const rideService = {
     rides?: Ride[];
   }> {
     try {
-      // Query only active rides with available seats
+      // ✅ FIXED: Query only by status first, then filter in memory
+      // This avoids the composite index requirement
       const q = query(
         collection(db, 'rides'),
         where('status', '==', 'active'),
-        where('availableSeats', '>', 0),
-        orderBy('availableSeats', 'desc'),
         orderBy('createdAt', 'desc')
       );
 
       const querySnapshot = await getDocs(q);
 
-      const rides: Ride[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-      })) as Ride[];
+      // ✅ Filter in memory for rides with available seats
+      const rides: Ride[] = querySnapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date(),
+        }))
+        .filter((ride: any) => ride.availableSeats > 0) as Ride[];
 
       return {
         success: true,
