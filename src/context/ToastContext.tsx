@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { ToastList } from '../components/Toast';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -18,7 +19,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const useToast = () => {
   const context = useContext(ToastContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useToast must be used within a ToastProvider');
   }
   return context;
@@ -51,21 +52,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   return (
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
-      <ToastContainer toasts={toasts} onDismiss={hideToast} />
+      <ToastList toasts={toasts} onDismiss={hideToast} />
     </ToastContext.Provider>
   );
 };
-
-interface ToastContainerProps {
-  toasts: Toast[];
-  onDismiss: (id: string) => void;
-}
-
-const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) => {
-  return (
-    <ToastList toasts={toasts} onDismiss={onDismiss} />
-  );
-};
-
-// Import the actual Toast component
-import { ToastList } from '../components/Toast';

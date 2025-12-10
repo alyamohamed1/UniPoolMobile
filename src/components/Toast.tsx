@@ -36,7 +36,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss, index }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [opacity, translateY]);
 
   const handleDismiss = () => {
     Animated.parallel([

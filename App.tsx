@@ -4,7 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// IMPORT AuthProvider
 import { AuthProvider } from './src/context/AuthContext';
 import { ToastProvider } from './src/context/ToastContext';
 
@@ -37,40 +36,39 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        {/* ✅ WRAP WITH AuthProvider */}
         <AuthProvider>
           <ToastProvider>
             <NavigationContainer>
-            <Stack.Navigator
-              initialRouteName="Welcome"
-              screenOptions={{
-                headerShown: false,
-                gestureEnabled: true,
-              }}
-            >
-              <Stack.Screen name="Welcome" component={WelcomeScreen} />
-              <Stack.Screen name="SignIn" component={SignInScreen} />
-              <Stack.Screen name="SignUp" component={SignUpScreen} />
-              <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
-              <Stack.Screen name="RiderMain" component={RiderMainScreen} />
-              <Stack.Screen name="DriverMain" component={DriverMainScreen} />
-              <Stack.Screen name="PostRide" component={PostRideScreen} />
-              <Stack.Screen name="SearchDrivers" component={SearchDriversScreen} />
-              <Stack.Screen name="DriverDetails" component={DriverDetailsScreen} />
-              <Stack.Screen name="DriverRequests" component={DriverRequestsScreen} />
-              <Stack.Screen name="Profile" component={ProfileScreen} />
-              <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-              <Stack.Screen name="Chat" component={ChatScreen} />
-              <Stack.Screen name="Rides" component={RidesScreen} />
-              <Stack.Screen name="Notifications" component={NotificationsScreen} />
-              <Stack.Screen name="Ratings" component={RatingsScreen} />
-              <Stack.Screen name="Rewards" component={RewardsScreen} />
-              <Stack.Screen name="Safety" component={SafetyScreen} />
-              <Stack.Screen name="SafetyReport" component={SafetyReportScreen} />
-              <Stack.Screen name="Settings" component={SettingsScreen} />
-              <Stack.Screen name="RateDriver" component={RateDriverScreen} />
-              <Stack.Screen name="RatePassengers" component={RatePassengersScreen} />
-            </Stack.Navigator>
+              <Stack.Navigator
+                initialRouteName="Welcome"
+                screenOptions={{
+                  headerShown: false,
+                  gestureEnabled: true,
+                }}
+              >
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="SignIn" component={SignInScreen} />
+                <Stack.Screen name="SignUp" component={SignUpScreen} />
+                <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+                <Stack.Screen name="RiderMain" component={RiderMainScreen} />
+                <Stack.Screen name="DriverMain" component={DriverMainScreen} />
+                <Stack.Screen name="PostRide" component={PostRideScreen} />
+                <Stack.Screen name="SearchDrivers" component={SearchDriversScreen} />
+                <Stack.Screen name="DriverDetails" component={DriverDetailsScreen} />
+                <Stack.Screen name="DriverRequests" component={DriverRequestsScreen} />
+                <Stack.Screen name="Profile" component={ProfileScreen} />
+                <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                <Stack.Screen name="Chat" component={ChatScreen} />
+                <Stack.Screen name="Rides" component={RidesScreen} />
+                <Stack.Screen name="Notifications" component={NotificationsScreen} />
+                <Stack.Screen name="Ratings" component={RatingsScreen} />
+                <Stack.Screen name="Rewards" component={RewardsScreen} />
+                <Stack.Screen name="Safety" component={SafetyScreen} />
+                <Stack.Screen name="SafetyReport" component={SafetyReportScreen} />
+                <Stack.Screen name="Settings" component={SettingsScreen} />
+                <Stack.Screen name="RateDriver" component={RateDriverScreen} />
+                <Stack.Screen name="RatePassengers" component={RatePassengersScreen} />
+              </Stack.Navigator>
             </NavigationContainer>
           </ToastProvider>
         </AuthProvider>
