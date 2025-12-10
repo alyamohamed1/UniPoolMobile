@@ -6,6 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,20 +17,53 @@ import * as Location from 'expo-location';
 export default function RiderMainScreen({ navigation }: any) {
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+    requestLocationPermission();
+  }, []);
+
+  const requestLocationPermission = async () => {
+    try {
+      // Request permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      
       if (status !== 'granted') {
+        setErrorMsg('Location permission denied. Please enable location in settings.');
         setLoading(false);
+        Alert.alert(
+          'Location Permission Required',
+          'Please enable location permissions in your device settings to use this feature.',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc.coords);
+      // Get current location
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      setLocation(currentLocation.coords);
       setLoading(false);
-    })();
-  }, []);
+    } catch (error) {
+      console.error('Location error:', error);
+      setErrorMsg('Failed to get your location. Please try again.');
+      setLoading(false);
+      
+      // Set default location (Bahrain center) if location fails
+      setLocation({
+        latitude: 26.0667,
+        longitude: 50.5577,
+      });
+    }
+  };
+
+  const handleRetryLocation = () => {
+    setLoading(true);
+    setErrorMsg(null);
+    requestLocationPermission();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -49,10 +84,18 @@ export default function RiderMainScreen({ navigation }: any) {
               <ActivityIndicator size="large" color="#7F7CAF" />
               <Text style={styles.mapSubtext}>Loading map...</Text>
             </View>
+          ) : errorMsg ? (
+            <View style={styles.mapPlaceholder}>
+              <Text style={styles.mapText}>🗺️</Text>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={handleRetryLocation}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
           ) : location ? (
             <MapView
               style={styles.map}
-              provider={PROVIDER_GOOGLE}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               initialRegion={{
                 latitude: location.latitude,
                 longitude: location.longitude,
@@ -61,6 +104,7 @@ export default function RiderMainScreen({ navigation }: any) {
               }}
               showsUserLocation={true}
               showsMyLocationButton={true}
+              loadingEnabled={true}
             >
               <Marker
                 coordinate={{
@@ -68,13 +112,14 @@ export default function RiderMainScreen({ navigation }: any) {
                   longitude: location.longitude,
                 }}
                 title="Your Location"
+                description="You are here"
                 pinColor="blue"
               />
             </MapView>
           ) : (
             <View style={styles.mapPlaceholder}>
               <Text style={styles.mapText}>🗺️</Text>
-              <Text style={styles.mapSubtext}>Location permission denied</Text>
+              <Text style={styles.mapSubtext}>Unable to load map</Text>
             </View>
           )}
         </View>
@@ -84,7 +129,9 @@ export default function RiderMainScreen({ navigation }: any) {
 
           <TouchableOpacity style={styles.inputButton}>
             <Text style={styles.inputIcon}>📍</Text>
-            <Text style={styles.inputPlaceholder}>Current Location</Text>
+            <Text style={styles.inputPlaceholder}>
+              {location ? 'Current Location' : 'Location unavailable'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -218,6 +265,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   mapText: {
     fontSize: 48,
@@ -226,6 +274,25 @@ const styles = StyleSheet.create({
   mapSubtext: {
     fontSize: 14,
     color: '#6B7280',
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: '#7F7CAF',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   searchContainer: {
     padding: 16,

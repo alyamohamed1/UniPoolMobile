@@ -1,4 +1,4 @@
-{
+  {
   "expo": {
     "name": "Unipool",
     "slug": "unipool-mobile",
@@ -16,45 +16,42 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.unipool.mobile",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We need your location to show nearby rides",
-        "NSLocationAlwaysUsageDescription": "We need your location to show nearby rides",
+        "NSLocationWhenInUseUsageDescription": "We need your location to show nearby rides and help you navigate",
+        "NSLocationAlwaysUsageDescription": "We need your location to show nearby rides and track your trips",
         "UIBackgroundModes": [
           "location",
           "fetch"
         ]
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyBj8cc7keMwW1Bs7uAuUKipwLOcnPF5wcw"
       }
     },
     "android": {
       "package": "com.unipool.mobile",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION"
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
         }
       }
     },
     "plugins": [
-      "expo-router",
       [
-        "react-native-maps",
+        "expo-location",
         {
-          "ApiKey": "YOUR_IOS_MAPS_API_KEY_HERE",
+          "locationAlwaysAndWhenInUsePermission": "Allow Unipool to use your location to show nearby rides."
         }
       ],
       "react-native-reanimated"
     ],
     "extra": {
-      "router": {
-        "origin": false
-      },
       "eas": {
-        "projectId": "your-project-id-here"
+        "projectId": "unipool-910a3"
       }
     }
   }
-}
+  }

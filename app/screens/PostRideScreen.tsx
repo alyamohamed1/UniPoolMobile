@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { useAuth } from '../../src/context/AuthContext';
 import { rideService } from '../../src/services/ride.service';
 import { useToast } from '../../src/context/ToastContext';
@@ -18,6 +21,8 @@ import { useToast } from '../../src/context/ToastContext';
 export default function PostRideScreen({ navigation }: any) {
   const { user, userData } = useAuth();
   const { showToast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+  const [location, setLocation] = useState<any>(null);
 
   const [rideData, setRideData] = useState({
     pickupLocation: '',
@@ -29,8 +34,67 @@ export default function PostRideScreen({ navigation }: any) {
     notes: '',
   });
 
+  useEffect(() => {
+    getCurrentLocation();
+    setDefaultDate();
+  }, []);
+
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        setLocation(loc.coords);
+      }
+    } catch (error) {
+      console.error('Location error:', error);
+      // Use default Bahrain coordinates
+      setLocation({
+        latitude: 26.0667,
+        longitude: 50.5577,
+      });
+    }
+  };
+
+  const setDefaultDate = () => {
+    const today = new Date();
+    const formattedDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    setRideData(prev => ({ ...prev, date: formattedDate }));
+  };
+
   const handleChange = (field: string, value: string) => {
     setRideData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const validateInputs = (): boolean => {
+    if (!rideData.pickupLocation.trim()) {
+      showToast('Please enter pickup location', 'warning');
+      return false;
+    }
+
+    if (!rideData.dropoffLocation.trim()) {
+      showToast('Please enter drop-off location', 'warning');
+      return false;
+    }
+
+    if (!rideData.date) {
+      showToast('Please select a date', 'warning');
+      return false;
+    }
+
+    if (!rideData.time.trim()) {
+      showToast('Please enter departure time', 'warning');
+      return false;
+    }
+
+    if (!rideData.seats || parseInt(rideData.seats) < 1) {
+      showToast('Please select number of seats', 'warning');
+      return false;
+    }
+
+    return true;
   };
 
   const handlePostRide = async () => {
@@ -39,26 +103,35 @@ export default function PostRideScreen({ navigation }: any) {
       return;
     }
 
-    // Validate fields
-    if (!rideData.pickupLocation || !rideData.dropoffLocation || !rideData.time || !rideData.seats) {
-      showToast('Please fill in all required fields', 'warning');
+    if (!validateInputs()) {
       return;
     }
 
+    setSubmitting(true);
+
     try {
-      // Use dummy GPS coordinates (Bahrain default)
+      // Use current location or default Bahrain coordinates
+      const pickupCoords = location || { latitude: 26.0667, longitude: 50.5577 };
+      
+      // For demo, use slightly offset coordinates for dropoff
+      // In production, you'd geocode the actual addresses
+      const dropoffCoords = {
+        latitude: pickupCoords.latitude + 0.01,
+        longitude: pickupCoords.longitude + 0.01,
+      };
+
       const result = await rideService.createRide({
         driverId: user.uid,
         driverName: userData.name,
         driverPhone: userData.phone,
-        driverRating: userData.rating,
+        driverRating: userData.rating || 5.0,
         from: rideData.pickupLocation,
         to: rideData.dropoffLocation,
-        pickupLat: 26.0667, // Bahrain center
-        pickupLng: 50.5577,
-        dropoffLat: 26.0778,
-        dropoffLng: 50.5688,
-        date: rideData.date || new Date().toISOString().split('T')[0],
+        pickupLat: pickupCoords.latitude,
+        pickupLng: pickupCoords.longitude,
+        dropoffLat: dropoffCoords.latitude,
+        dropoffLng: dropoffCoords.longitude,
+        date: rideData.date,
         time: rideData.time,
         totalSeats: parseInt(rideData.seats),
         availableSeats: parseInt(rideData.seats),
@@ -67,13 +140,18 @@ export default function PostRideScreen({ navigation }: any) {
         status: 'active',
       });
 
+      setSubmitting(false);
+
       if (result.success) {
         showToast('Ride posted successfully!', 'success');
-        setTimeout(() => navigation.navigate('DriverMain'), 1000);
+        setTimeout(() => {
+          navigation.navigate('DriverMain');
+        }, 1000);
       } else {
         showToast(result.error || 'Failed to post ride', 'error');
       }
     } catch (error) {
+      setSubmitting(false);
       showToast('An unexpected error occurred', 'error');
       console.error('Post ride error:', error);
     }
@@ -88,6 +166,7 @@ export default function PostRideScreen({ navigation }: any) {
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
+          disabled={submitting}
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -121,6 +200,7 @@ export default function PostRideScreen({ navigation }: any) {
                     placeholderTextColor="#9CA3AF"
                     value={rideData.pickupLocation}
                     onChangeText={(value) => handleChange('pickupLocation', value)}
+                    editable={!submitting}
                   />
                 </View>
               </View>
@@ -135,6 +215,7 @@ export default function PostRideScreen({ navigation }: any) {
                     placeholderTextColor="#9CA3AF"
                     value={rideData.dropoffLocation}
                     onChangeText={(value) => handleChange('dropoffLocation', value)}
+                    editable={!submitting}
                   />
                 </View>
               </View>
@@ -149,12 +230,14 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>📅</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="MM/DD/YYYY"
+                    placeholder="YYYY-MM-DD"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.date}
                     onChangeText={(value) => handleChange('date', value)}
+                    editable={!submitting}
                   />
                 </View>
+                <Text style={styles.helperText}>Format: {new Date().toISOString().split('T')[0]}</Text>
               </View>
 
               <View style={styles.inputGroup}>
@@ -163,10 +246,11 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>🕐</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., 3:00 PM"
+                    placeholder="e.g., 3:00 PM or 15:00"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.time}
                     onChangeText={(value) => handleChange('time', value)}
+                    editable={!submitting}
                   />
                 </View>
               </View>
@@ -186,6 +270,7 @@ export default function PostRideScreen({ navigation }: any) {
                         rideData.seats === num.toString() && styles.seatButtonActive,
                       ]}
                       onPress={() => handleChange('seats', num.toString())}
+                      disabled={submitting}
                     >
                       <Text
                         style={[
@@ -201,16 +286,17 @@ export default function PostRideScreen({ navigation }: any) {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Price per Seat (optional)</Text>
+                <Text style={styles.label}>Price per Seat (BHD)</Text>
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputIcon}>💵</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., $5"
+                    placeholder="e.g., 2"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.pricePerSeat}
                     onChangeText={(value) => handleChange('pricePerSeat', value)}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    editable={!submitting}
                   />
                 </View>
               </View>
@@ -225,16 +311,22 @@ export default function PostRideScreen({ navigation }: any) {
                   onChangeText={(value) => handleChange('notes', value)}
                   multiline
                   numberOfLines={4}
+                  editable={!submitting}
                 />
               </View>
             </View>
           </View>
 
           <TouchableOpacity 
-            style={styles.postButton}
+            style={[styles.postButton, submitting && styles.postButtonDisabled]}
             onPress={handlePostRide}
+            disabled={submitting}
           >
-            <Text style={styles.postButtonText}>POST RIDE</Text>
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.postButtonText}>POST RIDE</Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -321,6 +413,11 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
+  helperText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,6 +487,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  postButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   postButtonText: {
     color: '#FFFFFF',
