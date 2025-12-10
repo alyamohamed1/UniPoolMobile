@@ -9,7 +9,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
 import { useToast } from '../../src/context/ToastContext';
@@ -69,6 +69,29 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
     Linking.openURL(url);
   };
 
+  // ✅ CALCULATE MAP REGION TO FIT BOTH MARKERS
+  const getMapRegion = () => {
+    const pickupLat = ride.pickupLat;
+    const pickupLng = ride.pickupLng;
+    const dropoffLat = ride.dropoffLat;
+    const dropoffLng = ride.dropoffLng;
+
+    // Calculate center point
+    const centerLat = (pickupLat + dropoffLat) / 2;
+    const centerLng = (pickupLng + dropoffLng) / 2;
+
+    // Calculate deltas to show both points with padding
+    const latDelta = Math.abs(pickupLat - dropoffLat) * 2.5 || 0.05;
+    const lngDelta = Math.abs(pickupLng - dropoffLng) * 2.5 || 0.05;
+
+    return {
+      latitude: centerLat,
+      longitude: centerLng,
+      latitudeDelta: Math.max(latDelta, 0.05), // Minimum zoom level
+      longitudeDelta: Math.max(lngDelta, 0.05),
+    };
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -84,16 +107,12 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Map */}
+        {/* Map with actual coordinates */}
         <View style={styles.mapContainer}>
           <MapView
             style={styles.map}
-            initialRegion={{
-              latitude: ride.pickupLat,
-              longitude: ride.pickupLng,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }}
+            provider={PROVIDER_GOOGLE}
+            initialRegion={getMapRegion()}
           >
             {/* Pickup Marker */}
             <Marker

@@ -10,10 +10,11 @@ import {
   Platform,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 export default function RiderMainScreen({ navigation }: any) {
@@ -32,6 +33,11 @@ export default function RiderMainScreen({ navigation }: any) {
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showDestinationModal, setShowDestinationModal] = useState(false);
   const [tempMarkerLocation, setTempMarkerLocation] = useState<any>(null);
+  
+  // Manual input states
+  const [manualLocationInput, setManualLocationInput] = useState<string>('');
+  const [manualDestinationInput, setManualDestinationInput] = useState<string>('');
+  const [searchingAddress, setSearchingAddress] = useState(false);
 
   useEffect(() => {
     requestLocationPermission();
@@ -44,11 +50,6 @@ export default function RiderMainScreen({ navigation }: any) {
       if (status !== 'granted') {
         setErrorMsg('Location permission denied. Please enable location in settings.');
         setLoading(false);
-        Alert.alert(
-          'Location Permission Required',
-          'Please enable location permissions in your device settings to use this feature.',
-          [{ text: 'OK' }]
-        );
         // Use default Bahrain location
         const defaultLocation = {
           latitude: 26.0667,
@@ -58,8 +59,8 @@ export default function RiderMainScreen({ navigation }: any) {
         setMapRegion({
           latitude: 26.0667,
           longitude: 50.5577,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
         });
         setLoading(false);
         return;
@@ -78,8 +79,8 @@ export default function RiderMainScreen({ navigation }: any) {
       setMapRegion({
         latitude: coords.latitude,
         longitude: coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
+        latitudeDelta: 0.1,
+        longitudeDelta: 0.1,
       });
       setLoading(false);
     } catch (error) {
@@ -96,8 +97,8 @@ export default function RiderMainScreen({ navigation }: any) {
       setMapRegion({
         latitude: 26.0667,
         longitude: 50.5577,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
+        latitudeDelta: 0.1,
+        longitudeDelta: 0.1,
       });
     }
   };
@@ -114,20 +115,99 @@ export default function RiderMainScreen({ navigation }: any) {
   };
 
   const handleSelectCurrentLocation = () => {
+    setManualLocationInput('');
     setShowLocationModal(true);
     setTempMarkerLocation(location);
   };
 
   const handleSelectDestination = () => {
+    setManualDestinationInput('');
     setShowDestinationModal(true);
     setTempMarkerLocation(location);
   };
 
-  const confirmCurrentLocation = async () => {
-    if (tempMarkerLocation) {
-      setCurrentLocationCoords(tempMarkerLocation);
+  const searchAddressForLocation = async () => {
+    if (!manualLocationInput.trim()) {
+      Alert.alert('Error', 'Please enter a location');
+      return;
+    }
+
+    setSearchingAddress(true);
+    try {
+      // Try to geocode the address
+      const results = await Location.geocodeAsync(manualLocationInput);
       
-      // Get address from coordinates
+      if (results.length > 0) {
+        const coords = {
+          latitude: results[0].latitude,
+          longitude: results[0].longitude,
+        };
+        setTempMarkerLocation(coords);
+        setMapRegion({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        Alert.alert('Success', 'Location found! You can adjust the marker if needed.');
+      } else {
+        Alert.alert('Not Found', 'Could not find that location. Please try a different address or use the map.');
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      Alert.alert('Error', 'Could not search for that location. Please try using the map instead.');
+    } finally {
+      setSearchingAddress(false);
+    }
+  };
+
+  const searchAddressForDestination = async () => {
+    if (!manualDestinationInput.trim()) {
+      Alert.alert('Error', 'Please enter a destination');
+      return;
+    }
+
+    setSearchingAddress(true);
+    try {
+      const results = await Location.geocodeAsync(manualDestinationInput);
+      
+      if (results.length > 0) {
+        const coords = {
+          latitude: results[0].latitude,
+          longitude: results[0].longitude,
+        };
+        setTempMarkerLocation(coords);
+        setMapRegion({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        Alert.alert('Success', 'Destination found! You can adjust the marker if needed.');
+      } else {
+        Alert.alert('Not Found', 'Could not find that destination. Please try a different address or use the map.');
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      Alert.alert('Error', 'Could not search for that destination. Please try using the map instead.');
+    } finally {
+      setSearchingAddress(false);
+    }
+  };
+
+  const confirmCurrentLocation = async () => {
+    if (!tempMarkerLocation) {
+      Alert.alert('Error', 'Please select a location on the map or search for an address');
+      return;
+    }
+
+    setCurrentLocationCoords(tempMarkerLocation);
+    
+    // If user typed an address, use that
+    if (manualLocationInput.trim()) {
+      setCurrentLocation(manualLocationInput);
+    } else {
+      // Otherwise, reverse geocode the coordinates
       try {
         const result = await Location.reverseGeocodeAsync({
           latitude: tempMarkerLocation.latitude,
@@ -154,15 +234,25 @@ export default function RiderMainScreen({ navigation }: any) {
         setCurrentLocation(`${tempMarkerLocation.latitude.toFixed(4)}, ${tempMarkerLocation.longitude.toFixed(4)}`);
       }
     }
+    
     setShowLocationModal(false);
     setTempMarkerLocation(null);
+    setManualLocationInput('');
   };
 
   const confirmDestination = async () => {
-    if (tempMarkerLocation) {
-      setDestinationCoords(tempMarkerLocation);
-      
-      // Get address from coordinates
+    if (!tempMarkerLocation) {
+      Alert.alert('Error', 'Please select a destination on the map or search for an address');
+      return;
+    }
+
+    setDestinationCoords(tempMarkerLocation);
+    
+    // If user typed an address, use that
+    if (manualDestinationInput.trim()) {
+      setDestination(manualDestinationInput);
+    } else {
+      // Otherwise, reverse geocode the coordinates
       try {
         const result = await Location.reverseGeocodeAsync({
           latitude: tempMarkerLocation.latitude,
@@ -189,8 +279,10 @@ export default function RiderMainScreen({ navigation }: any) {
         setDestination(`${tempMarkerLocation.latitude.toFixed(4)}, ${tempMarkerLocation.longitude.toFixed(4)}`);
       }
     }
+    
     setShowDestinationModal(false);
     setTempMarkerLocation(null);
+    setManualDestinationInput('');
   };
 
   const handleSearchDrivers = () => {
@@ -231,7 +323,7 @@ export default function RiderMainScreen({ navigation }: any) {
           ) : location && mapRegion ? (
             <MapView
               style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              provider={PROVIDER_GOOGLE}
               region={mapRegion}
               onRegionChangeComplete={setMapRegion}
               showsUserLocation={true}
@@ -353,41 +445,84 @@ export default function RiderMainScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Location Selection Modal */}
+      {/* Location Selection Modal - FIXED LAYOUT */}
       <Modal
         visible={showLocationModal}
         animationType="slide"
         transparent={false}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+          {/* Fixed Header */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Pickup Location</Text>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setShowLocationModal(false)}
-            >
-              <Text style={styles.modalCloseText}>✕</Text>
-            </TouchableOpacity>
+            <View style={styles.modalHeaderContent}>
+              <Text style={styles.modalTitle}>Select Pickup Location</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowLocationModal(false);
+                  setManualLocationInput('');
+                  setTempMarkerLocation(null);
+                }}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          
-          <MapView
-            style={styles.modalMap}
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            region={mapRegion}
-            onPress={handleMapPress}
-            showsUserLocation={true}
-          >
-            {tempMarkerLocation && (
-              <Marker
-                coordinate={tempMarkerLocation}
-                title="Pickup Location"
-                pinColor="green"
-              />
-            )}
-          </MapView>
 
+          {/* Search Input Section */}
+          <View style={styles.searchInputSection}>
+            <Text style={styles.searchInputLabel}>Type address or tap on map:</Text>
+            <View style={styles.searchRow}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="e.g., AUBH Sakhir"
+                placeholderTextColor="#9CA3AF"
+                value={manualLocationInput}
+                onChangeText={setManualLocationInput}
+                autoCapitalize="words"
+              />
+              <TouchableOpacity
+                style={styles.searchButton2}
+                onPress={searchAddressForLocation}
+                disabled={searchingAddress}
+              >
+                {searchingAddress ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.searchButtonIcon}>🔍</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+            
+          {/* Map Section */}
+          <View style={styles.mapSection}>
+            <MapView
+              style={styles.fullMap}
+              provider={PROVIDER_GOOGLE}
+              region={mapRegion}
+              onPress={handleMapPress}
+              showsUserLocation={true}
+            >
+              {tempMarkerLocation && (
+                <Marker
+                  coordinate={tempMarkerLocation}
+                  title="Pickup Location"
+                  pinColor="green"
+                  draggable
+                  onDragEnd={(e) => setTempMarkerLocation(e.nativeEvent.coordinate)}
+                />
+              )}
+            </MapView>
+          </View>
+
+          {/* Fixed Footer */}
           <View style={styles.modalFooter}>
-            <Text style={styles.modalInstruction}>Tap on the map to select your pickup location</Text>
+            <Text style={styles.modalInstruction}>
+              {tempMarkerLocation 
+                ? 'Perfect! Tap confirm or drag the marker to adjust'
+                : 'Tap on the map or type an address above'}
+            </Text>
             <TouchableOpacity
               style={[
                 styles.confirmButton,
@@ -402,41 +537,84 @@ export default function RiderMainScreen({ navigation }: any) {
         </SafeAreaView>
       </Modal>
 
-      {/* Destination Selection Modal */}
+      {/* Destination Selection Modal - FIXED LAYOUT */}
       <Modal
         visible={showDestinationModal}
         animationType="slide"
         transparent={false}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+          {/* Fixed Header */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Destination</Text>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setShowDestinationModal(false)}
-            >
-              <Text style={styles.modalCloseText}>✕</Text>
-            </TouchableOpacity>
+            <View style={styles.modalHeaderContent}>
+              <Text style={styles.modalTitle}>Select Destination</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowDestinationModal(false);
+                  setManualDestinationInput('');
+                  setTempMarkerLocation(null);
+                }}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          
-          <MapView
-            style={styles.modalMap}
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            region={mapRegion}
-            onPress={handleMapPress}
-            showsUserLocation={true}
-          >
-            {tempMarkerLocation && (
-              <Marker
-                coordinate={tempMarkerLocation}
-                title="Destination"
-                pinColor="red"
-              />
-            )}
-          </MapView>
 
+          {/* Search Input Section */}
+          <View style={styles.searchInputSection}>
+            <Text style={styles.searchInputLabel}>Type address or tap on map:</Text>
+            <View style={styles.searchRow}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="e.g., City Center Mall"
+                placeholderTextColor="#9CA3AF"
+                value={manualDestinationInput}
+                onChangeText={setManualDestinationInput}
+                autoCapitalize="words"
+              />
+              <TouchableOpacity
+                style={styles.searchButton2}
+                onPress={searchAddressForDestination}
+                disabled={searchingAddress}
+              >
+                {searchingAddress ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.searchButtonIcon}>🔍</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+            
+          {/* Map Section */}
+          <View style={styles.mapSection}>
+            <MapView
+              style={styles.fullMap}
+              provider={PROVIDER_GOOGLE}
+              region={mapRegion}
+              onPress={handleMapPress}
+              showsUserLocation={true}
+            >
+              {tempMarkerLocation && (
+                <Marker
+                  coordinate={tempMarkerLocation}
+                  title="Destination"
+                  pinColor="red"
+                  draggable
+                  onDragEnd={(e) => setTempMarkerLocation(e.nativeEvent.coordinate)}
+                />
+              )}
+            </MapView>
+          </View>
+
+          {/* Fixed Footer */}
           <View style={styles.modalFooter}>
-            <Text style={styles.modalInstruction}>Tap on the map to select your destination</Text>
+            <Text style={styles.modalInstruction}>
+              {tempMarkerLocation 
+                ? 'Perfect! Tap confirm or drag the marker to adjust'
+                : 'Tap on the map or type an address above'}
+            </Text>
             <TouchableOpacity
               style={[
                 styles.confirmButton,
@@ -659,17 +837,22 @@ const styles = StyleSheet.create({
     color: '#7F7CAF',
     fontWeight: '600',
   },
+  // ✅ FIXED MODAL STYLES
   modalContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
   modalHeader: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modalHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   modalTitle: {
     fontSize: 18,
@@ -687,25 +870,73 @@ const styles = StyleSheet.create({
   modalCloseText: {
     fontSize: 20,
     color: '#6B7280',
+    fontWeight: '600',
   },
-  modalMap: {
+  searchInputSection: {
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  searchInputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#1F2937',
+    marginRight: 8,
+  },
+  searchButton2: {
+    backgroundColor: '#7F7CAF',
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchButtonIcon: {
+    fontSize: 18,
+  },
+  mapSection: {
     flex: 1,
   },
+  fullMap: {
+    width: '100%',
+    height: '100%',
+  },
   modalFooter: {
-    padding: 16,
     backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
   modalInstruction: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     textAlign: 'center',
     marginBottom: 12,
+    lineHeight: 18,
   },
   confirmButton: {
     backgroundColor: '#7F7CAF',
-    padding: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -716,5 +947,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
