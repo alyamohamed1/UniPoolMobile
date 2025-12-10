@@ -16,15 +16,45 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.unipool.mobile",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We need your location to show nearby rides"
+        "NSLocationWhenInUseUsageDescription": "We need your location to show nearby rides",
+        "NSLocationAlwaysUsageDescription": "We need your location to show nearby rides",
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
       }
     },
     "android": {
       "package": "com.unipool.mobile",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-maps",
+        {
+          "ApiKey": "YOUR_IOS_MAPS_API_KEY_HERE",
+        }
+      ],
+      "react-native-reanimated"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
     }
   }
 }

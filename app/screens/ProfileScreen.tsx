@@ -5,33 +5,58 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../../src/context/AuthContext';
+import { authService } from '../../src/services/auth.service';
 import { useToast } from '../../src/context/ToastContext';
 
 export default function ProfileScreen({ navigation }: any) {
+  const { user, userData, loading } = useAuth();
   const { showToast } = useToast();
 
-  const handleSignOut = () => {
-    showToast('You have been signed out', 'success');
-    setTimeout(() => navigation.navigate('Welcome'), 1000);
+  const handleSignOut = async () => {
+    const result = await authService.signOut();
+    if (result.success) {
+      showToast('You have been signed out', 'success');
+      setTimeout(() => navigation.navigate('Welcome'), 1000);
+    } else {
+      showToast('Failed to sign out', 'error');
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#7F7CAF" />
+      </View>
+    );
+  }
+
+  // Get user initials
+  const getInitials = () => {
+    if (!userData?.name) return 'U';
+    return userData.name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={['#7F7CAF', '#9FB4C7']}
-        style={styles.header}
-      >
-        <TouchableOpacity 
+      <LinearGradient colors={['#7F7CAF', '#9FB4C7']} style={styles.header}>
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.editButton}
           onPress={() => navigation.navigate('EditProfile')}
         >
@@ -43,38 +68,45 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={styles.profileCard}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>👤</Text>
+              <Text style={styles.avatarText}>{getInitials()}</Text>
             </View>
           </View>
-          <Text style={styles.name}>John Doe</Text>
-          <Text style={styles.email}>john.doe@university.edu</Text>
+          <Text style={styles.name}>{userData?.name || 'User'}</Text>
+          <Text style={styles.email}>{userData?.email || user?.email || ''}</Text>
           <View style={styles.ratingContainer}>
-            <Text style={styles.rating}>⭐ 5.0</Text>
-            <Text style={styles.ratingText}>Excellent Rider</Text>
+            <Text style={styles.rating}>⭐ {userData?.rating || 5.0}</Text>
+            <Text style={styles.ratingText}>
+              {userData?.role === 'driver' ? 'Excellent Driver' : 'Excellent Rider'}
+            </Text>
           </View>
         </View>
 
         <View style={styles.statsCard}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>24</Text>
+            <Text style={styles.statNumber}>{userData?.ridesCompleted || 0}</Text>
             <Text style={styles.statLabel}>Total Rides</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>120</Text>
+            <Text style={styles.statNumber}>0</Text>
             <Text style={styles.statLabel}>Points</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statNumber}>
+              {Math.floor(
+                (new Date().getTime() - (userData?.createdAt?.getTime() || new Date().getTime())) /
+                  (1000 * 60 * 60 * 24 * 30)
+              )}
+            </Text>
             <Text style={styles.statLabel}>Months</Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('EditProfile')}
           >
@@ -83,7 +115,7 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('Rides')}
           >
@@ -92,7 +124,7 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('Ratings')}
           >
@@ -101,7 +133,7 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('Rewards')}
           >
@@ -113,8 +145,8 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('Settings')}
           >
@@ -123,7 +155,7 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('Safety')}
           >
@@ -139,10 +171,7 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleSignOut}
-        >
+        <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -153,6 +182,12 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#F9FAFB',
   },
   header: {
@@ -214,7 +249,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 48,
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   name: {
     fontSize: 24,

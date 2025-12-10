@@ -1,26 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
 
 export default function RiderMainScreen({ navigation }: any) {
-  const [pickupLocation, setPickupLocation] = useState('');
-  const [destination, setDestination] = useState('');
+  const [location, setLocation] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLoading(false);
+        return;
+      }
+
+      let loc = await Location.getCurrentPositionAsync({});
+      setLocation(loc.coords);
+      setLoading(false);
+    })();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={['#7F7CAF', '#9FB4C7']}
-        style={styles.header}
-      >
+      <LinearGradient colors={['#7F7CAF', '#9FB4C7']} style={styles.header}>
         <Text style={styles.headerTitle}>Find a Ride</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.profileButton}
           onPress={() => navigation.navigate('Profile')}
         >
@@ -29,20 +43,51 @@ export default function RiderMainScreen({ navigation }: any) {
       </LinearGradient>
 
       <ScrollView style={styles.content}>
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapText}>🗺️ Map View</Text>
-          <Text style={styles.mapSubtext}>Interactive map coming soon</Text>
+        <View style={styles.mapContainer}>
+          {loading ? (
+            <View style={styles.mapPlaceholder}>
+              <ActivityIndicator size="large" color="#7F7CAF" />
+              <Text style={styles.mapSubtext}>Loading map...</Text>
+            </View>
+          ) : location ? (
+            <MapView
+              style={styles.map}
+              provider={PROVIDER_GOOGLE}
+              initialRegion={{
+                latitude: location.latitude,
+                longitude: location.longitude,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+              showsUserLocation={true}
+              showsMyLocationButton={true}
+            >
+              <Marker
+                coordinate={{
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                }}
+                title="Your Location"
+                pinColor="blue"
+              />
+            </MapView>
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <Text style={styles.mapText}>🗺️</Text>
+              <Text style={styles.mapSubtext}>Location permission denied</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.searchContainer}>
           <Text style={styles.sectionTitle}>Where to?</Text>
-          
+
           <TouchableOpacity style={styles.inputButton}>
             <Text style={styles.inputIcon}>📍</Text>
             <Text style={styles.inputPlaceholder}>Current Location</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.inputButton}
             onPress={() => navigation.navigate('SearchDrivers')}
           >
@@ -50,7 +95,7 @@ export default function RiderMainScreen({ navigation }: any) {
             <Text style={styles.inputPlaceholder}>Where are you going?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.searchButton}
             onPress={() => navigation.navigate('SearchDrivers')}
           >
@@ -61,7 +106,7 @@ export default function RiderMainScreen({ navigation }: any) {
         <View style={styles.quickActions}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionGrid}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionCard}
               onPress={() => navigation.navigate('Rides')}
             >
@@ -69,7 +114,7 @@ export default function RiderMainScreen({ navigation }: any) {
               <Text style={styles.actionText}>My Rides</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionCard}
               onPress={() => navigation.navigate('Rewards')}
             >
@@ -77,7 +122,7 @@ export default function RiderMainScreen({ navigation }: any) {
               <Text style={styles.actionText}>Rewards</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionCard}
               onPress={() => navigation.navigate('Safety')}
             >
@@ -85,7 +130,7 @@ export default function RiderMainScreen({ navigation }: any) {
               <Text style={styles.actionText}>Safety</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionCard}
               onPress={() => navigation.navigate('Settings')}
             >
@@ -101,21 +146,21 @@ export default function RiderMainScreen({ navigation }: any) {
           <Text style={styles.navIconActive}>🏠</Text>
           <Text style={styles.navTextActive}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('Rides')}
         >
           <Text style={styles.navIcon}>📋</Text>
           <Text style={styles.navText}>Rides</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('Chat')}
         >
           <Text style={styles.navIcon}>💬</Text>
           <Text style={styles.navText}>Chat</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('Profile')}
         >
@@ -158,13 +203,21 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  mapPlaceholder: {
+  mapContainer: {
     height: 250,
     backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
     margin: 16,
     borderRadius: 16,
+    overflow: 'hidden',
+  },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   mapText: {
     fontSize: 48,
