@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useToast } from '../../src/context/ToastContext';
 
 const PASSENGERS = [
   { id: '1', name: 'John Smith' },
@@ -17,6 +18,7 @@ const PASSENGERS = [
 ];
 
 export default function RatePassengersScreen({ navigation, route }: any) {
+  const { showToast } = useToast();
   const [ratings, setRatings] = useState<{ [key: string]: number }>({});
   const [comments, setComments] = useState<{ [key: string]: string }>({});
 
@@ -29,8 +31,14 @@ export default function RatePassengersScreen({ navigation, route }: any) {
   };
 
   const handleSubmit = () => {
+    if (!allRated) {
+      showToast('Please rate all passengers before submitting', 'warning');
+      return;
+    }
+
     // Submit ratings logic
-    navigation.goBack();
+    showToast('Passenger ratings submitted successfully!', 'success');
+    setTimeout(() => navigation.goBack(), 1000);
   };
 
   const allRated = PASSENGERS.every(p => ratings[p.id] > 0);

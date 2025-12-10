@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // IMPORT AuthProvider
 import { AuthProvider } from './src/context/AuthContext';
+import { ToastProvider } from './src/context/ToastContext';
 
 import WelcomeScreen from './app/screens/WelcomeScreen';
 import SignInScreen from './app/screens/SignInScreen';
@@ -38,7 +39,8 @@ export default function App() {
       <SafeAreaProvider>
         {/* ✅ WRAP WITH AuthProvider */}
         <AuthProvider>
-          <NavigationContainer>
+          <ToastProvider>
+            <NavigationContainer>
             <Stack.Navigator
               initialRouteName="Welcome"
               screenOptions={{
@@ -69,7 +71,8 @@ export default function App() {
               <Stack.Screen name="RateDriver" component={RateDriverScreen} />
               <Stack.Screen name="RatePassengers" component={RatePassengersScreen} />
             </Stack.Navigator>
-          </NavigationContainer>
+            </NavigationContainer>
+          </ToastProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

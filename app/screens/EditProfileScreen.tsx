@@ -10,8 +10,10 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function EditProfileScreen({ navigation }: any) {
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     name: 'John Doe',
     email: 'john.doe@university.edu',
@@ -25,8 +27,15 @@ export default function EditProfileScreen({ navigation }: any) {
   };
 
   const handleSave = () => {
+    // Validation
+    if (!formData.name || !formData.email || !formData.phone) {
+      showToast('Please fill in all required fields', 'warning');
+      return;
+    }
+
     // Save logic here
-    navigation.goBack();
+    showToast('Profile updated successfully!', 'success');
+    setTimeout(() => navigation.goBack(), 1000);
   };
 
   return (

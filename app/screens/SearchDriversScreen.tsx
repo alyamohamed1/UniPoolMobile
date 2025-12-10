@@ -4,16 +4,17 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { rideService, Ride } from '../../src/services/ride.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function SearchDriversScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -24,11 +25,14 @@ export default function SearchDriversScreen({ navigation }: any) {
 
       if (result.success && result.rides) {
         setRides(result.rides);
+        if (result.rides.length === 0) {
+          showToast('No rides available at the moment', 'info', 2000);
+        }
       } else {
-        Alert.alert('Error', result.error || 'Failed to load rides');
+        showToast(result.error || 'Failed to load rides', 'error');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
       console.error('Load rides error:', error);
     } finally {
       setLoading(false);

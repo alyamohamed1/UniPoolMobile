@@ -8,16 +8,17 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../src/context/AuthContext';
 import { rideService } from '../../src/services/ride.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function PostRideScreen({ navigation }: any) {
   const { user, userData } = useAuth();
-  
+  const { showToast } = useToast();
+
   const [rideData, setRideData] = useState({
     pickupLocation: '',
     dropoffLocation: '',
@@ -34,13 +35,13 @@ export default function PostRideScreen({ navigation }: any) {
 
   const handlePostRide = async () => {
     if (!user || !userData) {
-      Alert.alert('Error', 'You must be signed in');
+      showToast('You must be signed in', 'error');
       return;
     }
 
     // Validate fields
     if (!rideData.pickupLocation || !rideData.dropoffLocation || !rideData.time || !rideData.seats) {
-      Alert.alert('Missing Information', 'Please fill in all required fields');
+      showToast('Please fill in all required fields', 'warning');
       return;
     }
 
@@ -67,21 +68,13 @@ export default function PostRideScreen({ navigation }: any) {
       });
 
       if (result.success) {
-        Alert.alert(
-          'Ride Posted!',
-          'Your ride has been posted successfully. You will receive notifications when riders request to join.',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('DriverMain'),
-            },
-          ]
-        );
+        showToast('Ride posted successfully!', 'success');
+        setTimeout(() => navigation.navigate('DriverMain'), 1000);
       } else {
-        Alert.alert('Error', result.error || 'Failed to post ride');
+        showToast(result.error || 'Failed to post ride', 'error');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
       console.error('Post ride error:', error);
     }
   };

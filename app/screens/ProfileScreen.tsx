@@ -9,8 +9,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function ProfileScreen({ navigation }: any) {
+  const { showToast } = useToast();
+
+  const handleSignOut = () => {
+    showToast('You have been signed out', 'success');
+    setTimeout(() => navigation.navigate('Welcome'), 1000);
+  };
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
@@ -132,9 +139,9 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.logoutButton}
-          onPress={() => navigation.navigate('Welcome')}
+          onPress={handleSignOut}
         >
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>

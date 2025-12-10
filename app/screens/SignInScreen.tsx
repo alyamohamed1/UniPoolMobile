@@ -8,20 +8,21 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService } from '../../src/services/auth.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function SignInScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const handleSignIn = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showToast('Please fill in all fields', 'warning');
       return;
     }
 
@@ -33,6 +34,7 @@ export default function SignInScreen({ navigation }: any) {
       setLoading(false);
 
       if (result.success && result.userData) {
+        showToast('Welcome back!', 'success');
         // Check user role and navigate
         if (!result.userData.role) {
           navigation.navigate('RoleSelection');
@@ -42,11 +44,11 @@ export default function SignInScreen({ navigation }: any) {
           navigation.navigate('RiderMain');
         }
       } else {
-        Alert.alert('Error', result.error || 'Failed to sign in');
+        showToast(result.error || 'Failed to sign in', 'error');
       }
     } catch (error) {
       setLoading(false);
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
     }
   };
 

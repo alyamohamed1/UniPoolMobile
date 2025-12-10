@@ -9,12 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authService } from '../../src/services/auth.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function SignUpScreen({ navigation }: any) {
   const [formData, setFormData] = useState({
@@ -25,6 +25,7 @@ export default function SignUpScreen({ navigation }: any) {
     phone: '',
   });
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -33,17 +34,17 @@ export default function SignUpScreen({ navigation }: any) {
   const handleSignUp = async () => {
     // Validation
     if (!formData.name || !formData.email || !formData.password || !formData.universityId || !formData.phone) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showToast('Please fill in all fields', 'warning');
       return;
     }
 
     if (formData.password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      showToast('Password must be at least 6 characters', 'error');
       return;
     }
 
     if (!formData.email.endsWith('@aubh.edu.bh')) {
-      Alert.alert('Error', 'Please use your AUBH email address (@aubh.edu.bh)');
+      showToast('Please use your AUBH email address (@aubh.edu.bh)', 'error');
       return;
     }
 
@@ -61,22 +62,14 @@ export default function SignUpScreen({ navigation }: any) {
       setLoading(false);
 
       if (result.success) {
-        Alert.alert(
-          'Success!',
-          'Account created successfully. Please select your role.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => navigation.navigate('RoleSelection'),
-            },
-          ]
-        );
+        showToast('Account created successfully!', 'success');
+        setTimeout(() => navigation.navigate('RoleSelection'), 1000);
       } else {
-        Alert.alert('Error', result.error || 'Failed to create account');
+        showToast(result.error || 'Failed to create account', 'error');
       }
     } catch (error) {
       setLoading(false);
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
       console.error('Sign up error:', error);
     }
   };

@@ -7,19 +7,20 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function RoleSelectionScreen({ navigation }: any) {
   const { user, refreshUserData } = useAuth();
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const handleRoleSelection = async (role: 'driver' | 'rider') => {
     if (!user) {
-      Alert.alert('Error', 'You must be signed in');
+      showToast('You must be signed in', 'error');
       return;
     }
 
@@ -29,20 +30,23 @@ export default function RoleSelectionScreen({ navigation }: any) {
       const result = await authService.updateUserRole(user.uid, role);
 
       if (result.success) {
+        showToast('Role updated successfully!', 'success');
         // Refresh user data to get updated role
         await refreshUserData();
-        
+
         // Navigate based on role
-        if (role === 'driver') {
-          navigation.navigate('DriverMain');
-        } else {
-          navigation.navigate('RiderMain');
-        }
+        setTimeout(() => {
+          if (role === 'driver') {
+            navigation.navigate('DriverMain');
+          } else {
+            navigation.navigate('RiderMain');
+          }
+        }, 1000);
       } else {
-        Alert.alert('Error', result.error || 'Failed to update role');
+        showToast(result.error || 'Failed to update role', 'error');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
     } finally {
       setLoading(false);
     }

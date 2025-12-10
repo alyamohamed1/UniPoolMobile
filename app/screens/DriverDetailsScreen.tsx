@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Linking,
 } from 'react-native';
@@ -13,76 +12,55 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function DriverDetailsScreen({ route, navigation }: any) {
   const { ride } = route.params;
   const { user, userData } = useAuth();
   const [booking, setBooking] = useState(false);
+  const { showToast } = useToast();
 
   const handleBooking = async () => {
     if (!user || !userData) {
-      Alert.alert('Error', 'You must be signed in');
+      showToast('You must be signed in', 'error');
       return;
     }
 
     if (ride.availableSeats < 1) {
-      Alert.alert('Sorry', 'No seats available for this ride');
+      showToast('No seats available for this ride', 'warning');
       return;
     }
 
-    Alert.alert(
-      'Confirm Booking',
-      `Book this ride for ${ride.price} BHD?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setBooking(true);
+    setBooking(true);
 
-            try {
-              const result = await bookingService.createBooking(
-                ride.id,
-                user.uid,
-                userData.name,
-                userData.phone
-              );
+    try {
+      const result = await bookingService.createBooking(
+        ride.id,
+        user.uid,
+        userData.name,
+        userData.phone
+      );
 
-              setBooking(false);
+      setBooking(false);
 
-              if (result.success) {
-                Alert.alert(
-                  'Success!',
-                  'Ride booked successfully! The driver will be notified.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: () => navigation.navigate('RiderMain'),
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert('Error', result.error || 'Failed to book ride');
-              }
-            } catch (error) {
-              setBooking(false);
-              Alert.alert('Error', 'An unexpected error occurred');
-              console.error('Booking error:', error);
-            }
-          },
-        },
-      ]
-    );
+      if (result.success) {
+        showToast('Ride booked successfully!', 'success');
+        setTimeout(() => navigation.navigate('RiderMain'), 1500);
+      } else {
+        showToast(result.error || 'Failed to book ride', 'error');
+      }
+    } catch (error) {
+      setBooking(false);
+      showToast('An unexpected error occurred', 'error');
+      console.error('Booking error:', error);
+    }
   };
 
   const handleCallDriver = () => {
     if (ride.driverPhone) {
       Linking.openURL(`tel:${ride.driverPhone}`);
     } else {
-      Alert.alert('Error', 'Driver phone number not available');
+      showToast('Driver phone number not available', 'error');
     }
   };
 

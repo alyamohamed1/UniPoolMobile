@@ -5,15 +5,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService, Booking } from '../../src/services/booking.service';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function DriverRequestsScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,10 +28,10 @@ export default function DriverRequestsScreen({ navigation }: any) {
       if (result.success && result.bookings) {
         setBookings(result.bookings);
       } else {
-        Alert.alert('Error', result.error || 'Failed to load bookings');
+        showToast(result.error || 'Failed to load bookings', 'error');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
+      showToast('An unexpected error occurred', 'error');
       console.error('Load bookings error:', error);
     } finally {
       setLoading(false);
@@ -47,37 +48,21 @@ export default function DriverRequestsScreen({ navigation }: any) {
     loadBookings();
   };
 
-  const handleCancelBooking = (bookingId: string) => {
-    Alert.alert(
-      'Cancel Booking',
-      'Are you sure you want to cancel this booking?',
-      [
-        {
-          text: 'No',
-          style: 'cancel',
-        },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (!user) return;
+  const handleCancelBooking = async (bookingId: string) => {
+    try {
+      if (!user) return;
 
-              const result = await bookingService.cancelBooking(bookingId, user.uid);
+      const result = await bookingService.cancelBooking(bookingId, user.uid);
 
-              if (result.success) {
-                Alert.alert('Success', 'Booking cancelled successfully');
-                loadBookings();
-              } else {
-                Alert.alert('Error', result.error || 'Failed to cancel booking');
-              }
-            } catch (error) {
-              Alert.alert('Error', 'An unexpected error occurred');
-            }
-          },
-        },
-      ]
-    );
+      if (result.success) {
+        showToast('Booking cancelled successfully', 'success');
+        loadBookings();
+      } else {
+        showToast(result.error || 'Failed to cancel booking', 'error');
+      }
+    } catch (error) {
+      showToast('An unexpected error occurred', 'error');
+    }
   };
 
   const renderBooking = ({ item }: { item: Booking }) => {

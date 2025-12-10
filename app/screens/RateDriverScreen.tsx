@@ -10,8 +10,10 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useToast } from '../../src/context/ToastContext';
 
 export default function RateDriverScreen({ navigation, route }: any) {
+  const { showToast } = useToast();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -27,8 +29,14 @@ export default function RateDriverScreen({ navigation, route }: any) {
   };
 
   const handleSubmit = () => {
+    if (rating === 0) {
+      showToast('Please select a rating before submitting', 'warning');
+      return;
+    }
+
     // Submit rating logic
-    navigation.goBack();
+    showToast('Rating submitted successfully! Thank you.', 'success');
+    setTimeout(() => navigation.goBack(), 1000);
   };
 
   return (

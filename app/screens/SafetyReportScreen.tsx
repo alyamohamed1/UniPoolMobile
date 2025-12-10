@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useToast } from '../../src/context/ToastContext';
 
 const ISSUE_TYPES = [
   { id: '1', label: 'Unsafe Driving' },
@@ -20,12 +21,24 @@ const ISSUE_TYPES = [
 ];
 
 export default function SafetyReportScreen({ navigation }: any) {
+  const { showToast } = useToast();
   const [selectedIssue, setSelectedIssue] = useState('');
   const [description, setDescription] = useState('');
 
   const handleSubmit = () => {
+    if (!selectedIssue) {
+      showToast('Please select the type of issue', 'warning');
+      return;
+    }
+
+    if (!description.trim()) {
+      showToast('Please provide a description of the issue', 'warning');
+      return;
+    }
+
     // Submit report logic
-    navigation.goBack();
+    showToast('Safety report submitted. Our team will review it.', 'success');
+    setTimeout(() => navigation.goBack(), 1500);
   };
 
   return (
