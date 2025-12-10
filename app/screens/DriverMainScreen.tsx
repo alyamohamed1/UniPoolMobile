@@ -6,9 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+
+const { width } = Dimensions.get('window');
 
 const ACTIVE_RIDES = [
   {
@@ -19,11 +23,21 @@ const ACTIVE_RIDES = [
     date: 'Today',
     seats: 4,
     requests: 3,
+    pickupCoords: { latitude: 26.0667, longitude: 50.5577 },
+    dropoffCoords: { latitude: 26.0800, longitude: 50.5700 },
   },
 ];
 
 export default function DriverMainScreen({ navigation }: any) {
   const [isAvailable, setIsAvailable] = useState(false);
+  const [showMap, setShowMap] = useState(true);
+
+  const mapRegion = {
+    latitude: 26.0733,
+    longitude: 50.5639,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,13 +45,15 @@ export default function DriverMainScreen({ navigation }: any) {
         colors={['#3A85BD', '#9FB798']}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>Driver Dashboard</Text>
-        <TouchableOpacity 
-          style={styles.profileButton}
-          onPress={() => navigation.navigate('Profile')}
-        >
-          <Text style={styles.profileIcon}>👤</Text>
-        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Driver Dashboard</Text>
+          <TouchableOpacity 
+            style={styles.profileButton}
+            onPress={() => navigation.navigate('Profile')}
+          >
+            <Text style={styles.profileIcon}>👤</Text>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <ScrollView style={styles.content}>
@@ -56,19 +72,65 @@ export default function DriverMainScreen({ navigation }: any) {
           </Text>
         </View>
 
+        {/* MAP VIEW */}
+        {ACTIVE_RIDES.length > 0 && (
+          <View style={styles.mapSection}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>Active Routes</Text>
+              <TouchableOpacity onPress={() => setShowMap(!showMap)}>
+                <Text style={styles.toggleMapText}>
+                  {showMap ? 'Hide Map' : 'Show Map'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            {showMap && (
+              <View style={styles.mapContainer}>
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.map}
+                  region={mapRegion}
+                >
+                  {ACTIVE_RIDES.map((ride) => (
+                    <React.Fragment key={ride.id}>
+                      <Marker
+                        coordinate={ride.pickupCoords}
+                        title="Pickup"
+                        description={ride.from}
+                        pinColor="#10B981"
+                      />
+                      <Marker
+                        coordinate={ride.dropoffCoords}
+                        title="Drop-off"
+                        description={ride.to}
+                        pinColor="#EF4444"
+                      />
+                      <Polyline
+                        coordinates={[ride.pickupCoords, ride.dropoffCoords]}
+                        strokeColor="#3A85BD"
+                        strokeWidth={3}
+                      />
+                    </React.Fragment>
+                  ))}
+                </MapView>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* POST RIDE BUTTON */}
         <TouchableOpacity 
           style={styles.postRideButton}
           onPress={() => navigation.navigate('PostRide')}
         >
           <LinearGradient
-            colors={['#3A85BD', '#2563EB']}
+            colors={['#3A85BD', '#9FB798']}
             style={styles.postRideGradient}
           >
             <Text style={styles.postRideIcon}>➕</Text>
             <View style={styles.postRideContent}>
               <Text style={styles.postRideTitle}>Post a New Ride</Text>
-              <Text style={styles.postRideSubtitle}>Set your route and availability</Text>
+              <Text style={styles.postRideSubtitle}>Set your route on the map</Text>
             </View>
             <Text style={styles.postRideArrow}>→</Text>
           </LinearGradient>
@@ -223,11 +285,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   header: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 20,
   },
   headerTitle: {
     fontSize: 24,
@@ -270,6 +335,37 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  mapSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  mapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  mapTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  toggleMapText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3A85BD',
+  },
+  mapContainer: {
+    height: 250,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  map: {
+    width: '100%',
+    height: '100%',
   },
   postRideButton: {
     marginHorizontal: 16,
