@@ -13,7 +13,6 @@ import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
 import { useToast } from '../../src/context/ToastContext';
-import { ActivityIndicator } from 'react-native';
 
 export default function DriverDetailsScreen({ route, navigation }: any) {
   const { ride } = route.params;
