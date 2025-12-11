@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
 import { useToast } from '../../src/context/ToastContext';
@@ -20,6 +20,12 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
   const { user, userData } = useAuth();
   const [booking, setBooking] = useState(false);
   const { showToast } = useToast();
+
+  // Bahrain default coordinates (center of Bahrain)
+  const BAHRAIN_CENTER = {
+    latitude: 26.0667,
+    longitude: 50.5577,
+  };
 
   // Calculate distance between two points
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -36,20 +42,21 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
     return R * c;
   };
 
-  // Calculate distance for display
+  // Calculate distance for display with fallback to Bahrain locations
   const distance = calculateDistance(
-    ride.pickupLat,
-    ride.pickupLng,
-    ride.dropoffLat,
-    ride.dropoffLng
+    ride.pickupLat || BAHRAIN_CENTER.latitude,
+    ride.pickupLng || BAHRAIN_CENTER.longitude,
+    ride.dropoffLat || 26.2575, // Another Bahrain location
+    ride.dropoffLng || 50.6119
   ).toFixed(1);
 
-  // Calculate map region to show both markers
+  // Calculate map region to show both markers with Bahrain fallback
   const getMapRegion = () => {
-    const pickupLat = ride.pickupLat;
-    const pickupLng = ride.pickupLng;
-    const dropoffLat = ride.dropoffLat;
-    const dropoffLng = ride.dropoffLng;
+    // Use ride coordinates with Bahrain fallback if not available
+    const pickupLat = ride.pickupLat || BAHRAIN_CENTER.latitude;
+    const pickupLng = ride.pickupLng || BAHRAIN_CENTER.longitude;
+    const dropoffLat = ride.dropoffLat || 26.2575; // Another Bahrain location
+    const dropoffLng = ride.dropoffLng || 50.6119;
 
     // Calculate center point
     const centerLat = (pickupLat + dropoffLat) / 2;
@@ -70,31 +77,38 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
     };
   };
 
-  // Open navigation in Google/Apple Maps
+  // Open navigation in Google Maps ONLY (no Apple Maps)
   const openInMaps = () => {
-    const pickupLat = ride.pickupLat;
-    const pickupLng = ride.pickupLng;
-    const dropoffLat = ride.dropoffLat;
-    const dropoffLng = ride.dropoffLng;
+    // Use ride coordinates with Bahrain fallback
+    const pickupLat = ride.pickupLat || BAHRAIN_CENTER.latitude;
+    const pickupLng = ride.pickupLng || BAHRAIN_CENTER.longitude;
+    const dropoffLat = ride.dropoffLat || 26.2575;
+    const dropoffLng = ride.dropoffLng || 50.6119;
 
     const origin = `${pickupLat},${pickupLng}`;
     const destination = `${dropoffLat},${dropoffLng}`;
 
-    const url = Platform.select({
-      ios: `maps://app?saddr=${origin}&daddr=${destination}`,
+    // Google Maps URLs only
+    const googleMapsUrl = Platform.select({
+      ios: `comgooglemaps://?saddr=${origin}&daddr=${destination}&directionsmode=driving`,
       android: `google.navigation:q=${destination}&origin=${origin}`,
     });
 
+    // Web fallback for Google Maps
     const webFallback = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
 
-    if (url) {
-      Linking.canOpenURL(url).then((supported) => {
+    // First try to open Google Maps app
+    if (googleMapsUrl) {
+      Linking.canOpenURL(googleMapsUrl).then((supported) => {
         if (supported) {
-          Linking.openURL(url);
+          Linking.openURL(googleMapsUrl);
         } else {
+          // If Google Maps app not installed, use web version
           Linking.openURL(webFallback);
         }
       });
+    } else {
+      Linking.openURL(webFallback);
     }
   };
 
@@ -160,6 +174,7 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
         {/* Map with route and markers */}
         <View style={styles.mapContainer}>
           <MapView
+            provider={PROVIDER_GOOGLE}
             style={styles.map}
             initialRegion={getMapRegion()}
             showsUserLocation={true}
@@ -168,53 +183,35 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
             {/* Pickup Marker */}
             <Marker
               coordinate={{
-                latitude: ride.pickupLat,
-                longitude: ride.pickupLng,
+                latitude: ride.pickupLat || BAHRAIN_CENTER.latitude,
+                longitude: ride.pickupLng || BAHRAIN_CENTER.longitude,
               }}
               title="Pickup"
               description={ride.from}
-              pinColor="green"
-            >
-              <View style={styles.markerContainer}>
-                <View style={[styles.marker, styles.markerPickup]}>
-                  <Text style={styles.markerText}>📍</Text>
-                </View>
-                <View style={styles.markerLabel}>
-                  <Text style={styles.markerLabelText}>{ride.from}</Text>
-                </View>
-              </View>
-            </Marker>
+              pinColor="#4285F4"
+            />
 
             {/* Dropoff Marker */}
             <Marker
               coordinate={{
-                latitude: ride.dropoffLat,
-                longitude: ride.dropoffLng,
+                latitude: ride.dropoffLat || 26.2575,
+                longitude: ride.dropoffLng || 50.6119,
               }}
               title="Dropoff"
               description={ride.to}
-              pinColor="red"
-            >
-              <View style={styles.markerContainer}>
-                <View style={[styles.marker, styles.markerDropoff]}>
-                  <Text style={styles.markerText}>🎯</Text>
-                </View>
-                <View style={styles.markerLabel}>
-                  <Text style={styles.markerLabelText}>{ride.to}</Text>
-                </View>
-              </View>
-            </Marker>
+              pinColor="#EA4335"
+            />
 
             {/* Route line between markers */}
             <Polyline
               coordinates={[
                 {
-                  latitude: ride.pickupLat,
-                  longitude: ride.pickupLng,
+                  latitude: ride.pickupLat || BAHRAIN_CENTER.latitude,
+                  longitude: ride.pickupLng || BAHRAIN_CENTER.longitude,
                 },
                 {
-                  latitude: ride.dropoffLat,
-                  longitude: ride.dropoffLng,
+                  latitude: ride.dropoffLat || 26.2575,
+                  longitude: ride.dropoffLng || 50.6119,
                 },
               ]}
               strokeColor="#3A85BD"
@@ -222,12 +219,11 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
             />
           </MapView>
 
-          {/* Get Directions button overlay */}
+          {/* Get Directions button overlay - No emoji */}
           <TouchableOpacity
             style={styles.directionsButton}
             onPress={openInMaps}
           >
-            <Text style={styles.directionsIcon}>🧭</Text>
             <Text style={styles.directionsText}>Get Directions</Text>
           </TouchableOpacity>
 
@@ -427,46 +423,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  markerContainer: {
-    alignItems: 'center',
-  },
-  marker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  markerPickup: {
-    backgroundColor: '#10B981',
-  },
-  markerDropoff: {
-    backgroundColor: '#EF4444',
-  },
-  markerText: {
-    fontSize: 20,
-  },
-  markerLabel: {
-    marginTop: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  markerLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
   directionsButton: {
     position: 'absolute',
     bottom: 16,
@@ -474,6 +430,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#3A85BD',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 25,
@@ -482,10 +439,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-  },
-  directionsIcon: {
-    fontSize: 20,
-    marginRight: 8,
   },
   directionsText: {
     color: '#FFFFFF',
