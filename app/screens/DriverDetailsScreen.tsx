@@ -7,9 +7,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
 import { useToast } from '../../src/context/ToastContext';
@@ -19,6 +20,83 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
   const { user, userData } = useAuth();
   const [booking, setBooking] = useState(false);
   const { showToast } = useToast();
+
+  // Calculate distance between two points
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Calculate distance for display
+  const distance = calculateDistance(
+    ride.pickupLat,
+    ride.pickupLng,
+    ride.dropoffLat,
+    ride.dropoffLng
+  ).toFixed(1);
+
+  // Calculate map region to show both markers
+  const getMapRegion = () => {
+    const pickupLat = ride.pickupLat;
+    const pickupLng = ride.pickupLng;
+    const dropoffLat = ride.dropoffLat;
+    const dropoffLng = ride.dropoffLng;
+
+    // Calculate center point
+    const centerLat = (pickupLat + dropoffLat) / 2;
+    const centerLng = (pickupLng + dropoffLng) / 2;
+
+    // Calculate deltas with padding
+    const latDelta = Math.abs(pickupLat - dropoffLat) * 2.5;
+    const lngDelta = Math.abs(pickupLng - dropoffLng) * 2.5;
+
+    // Minimum zoom level
+    const minDelta = 0.05;
+
+    return {
+      latitude: centerLat,
+      longitude: centerLng,
+      latitudeDelta: Math.max(latDelta, minDelta),
+      longitudeDelta: Math.max(lngDelta, minDelta),
+    };
+  };
+
+  // Open navigation in Google/Apple Maps
+  const openInMaps = () => {
+    const pickupLat = ride.pickupLat;
+    const pickupLng = ride.pickupLng;
+    const dropoffLat = ride.dropoffLat;
+    const dropoffLng = ride.dropoffLng;
+
+    const origin = `${pickupLat},${pickupLng}`;
+    const destination = `${dropoffLat},${dropoffLng}`;
+
+    const url = Platform.select({
+      ios: `maps://app?saddr=${origin}&daddr=${destination}`,
+      android: `google.navigation:q=${destination}&origin=${origin}`,
+    });
+
+    const webFallback = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+
+    if (url) {
+      Linking.canOpenURL(url).then((supported) => {
+        if (supported) {
+          Linking.openURL(url);
+        } else {
+          Linking.openURL(webFallback);
+        }
+      });
+    }
+  };
 
   const handleBooking = async () => {
     if (!user || !userData) {
@@ -64,34 +142,6 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  const handleGetDirections = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${ride.pickupLat},${ride.pickupLng}&destination=${ride.dropoffLat},${ride.dropoffLng}`;
-    Linking.openURL(url);
-  };
-
-  // ✅ CALCULATE MAP REGION TO FIT BOTH MARKERS
-  const getMapRegion = () => {
-    const pickupLat = ride.pickupLat;
-    const pickupLng = ride.pickupLng;
-    const dropoffLat = ride.dropoffLat;
-    const dropoffLng = ride.dropoffLng;
-
-    // Calculate center point
-    const centerLat = (pickupLat + dropoffLat) / 2;
-    const centerLng = (pickupLng + dropoffLng) / 2;
-
-    // Calculate deltas to show both points with padding
-    const latDelta = Math.abs(pickupLat - dropoffLat) * 2.5 || 0.05;
-    const lngDelta = Math.abs(pickupLng - dropoffLng) * 2.5 || 0.05;
-
-    return {
-      latitude: centerLat,
-      longitude: centerLng,
-      latitudeDelta: Math.max(latDelta, 0.05), // Minimum zoom level
-      longitudeDelta: Math.max(lngDelta, 0.05),
-    };
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -107,12 +157,13 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Map with actual coordinates */}
+        {/* Map with route and markers */}
         <View style={styles.mapContainer}>
           <MapView
             style={styles.map}
-            provider={PROVIDER_GOOGLE}
             initialRegion={getMapRegion()}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
           >
             {/* Pickup Marker */}
             <Marker
@@ -123,7 +174,16 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
               title="Pickup"
               description={ride.from}
               pinColor="green"
-            />
+            >
+              <View style={styles.markerContainer}>
+                <View style={[styles.marker, styles.markerPickup]}>
+                  <Text style={styles.markerText}>📍</Text>
+                </View>
+                <View style={styles.markerLabel}>
+                  <Text style={styles.markerLabelText}>{ride.from}</Text>
+                </View>
+              </View>
+            </Marker>
 
             {/* Dropoff Marker */}
             <Marker
@@ -134,15 +194,47 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
               title="Dropoff"
               description={ride.to}
               pinColor="red"
+            >
+              <View style={styles.markerContainer}>
+                <View style={[styles.marker, styles.markerDropoff]}>
+                  <Text style={styles.markerText}>🎯</Text>
+                </View>
+                <View style={styles.markerLabel}>
+                  <Text style={styles.markerLabelText}>{ride.to}</Text>
+                </View>
+              </View>
+            </Marker>
+
+            {/* Route line between markers */}
+            <Polyline
+              coordinates={[
+                {
+                  latitude: ride.pickupLat,
+                  longitude: ride.pickupLng,
+                },
+                {
+                  latitude: ride.dropoffLat,
+                  longitude: ride.dropoffLng,
+                },
+              ]}
+              strokeColor="#3A85BD"
+              strokeWidth={3}
             />
           </MapView>
 
+          {/* Get Directions button overlay */}
           <TouchableOpacity
             style={styles.directionsButton}
-            onPress={handleGetDirections}
+            onPress={openInMaps}
           >
-            <Text style={styles.directionsButtonText}>🗺️ Get Directions</Text>
+            <Text style={styles.directionsIcon}>🧭</Text>
+            <Text style={styles.directionsText}>Get Directions</Text>
           </TouchableOpacity>
+
+          {/* Distance overlay */}
+          <View style={styles.distanceBadge}>
+            <Text style={styles.distanceText}>{distance} km</Text>
+          </View>
         </View>
 
         {/* Driver Info */}
@@ -162,7 +254,9 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
               <Text style={styles.driverName}>{ride.driverName}</Text>
               <View style={styles.ratingRow}>
                 <Text style={styles.rating}>⭐ {ride.driverRating || 5.0}</Text>
+                <Text style={styles.ratingText}>• Verified Driver</Text>
               </View>
+              <Text style={styles.phoneText}>📞 {ride.driverPhone || 'Not provided'}</Text>
             </View>
             {ride.driverPhone && (
               <TouchableOpacity
@@ -175,9 +269,12 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Route Details */}
+        {/* Route Details with distance */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Route</Text>
+          <View style={styles.routeHeader}>
+            <Text style={styles.sectionTitle}>Route</Text>
+            <Text style={styles.distanceDisplay}>~{distance} km</Text>
+          </View>
           <View style={styles.routeCard}>
             <View style={styles.routeRow}>
               <View style={styles.routeIconContainer}>
@@ -189,7 +286,7 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
               </View>
             </View>
 
-            <View style={styles.routeDivider} />
+            <View style={styles.routeLine} />
 
             <View style={styles.routeRow}>
               <View style={styles.routeIconContainer}>
@@ -209,28 +306,36 @@ export default function DriverDetailsScreen({ route, navigation }: any) {
           <View style={styles.detailsCard}>
             <View style={styles.detailRow}>
               <Text style={styles.detailIcon}>📅</Text>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{ride.date}</Text>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Date</Text>
+                <Text style={styles.detailValue}>{ride.date}</Text>
+              </View>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailIcon}>🕐</Text>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{ride.time}</Text>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Time</Text>
+                <Text style={styles.detailValue}>{ride.time}</Text>
+              </View>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailIcon}>💺</Text>
-              <Text style={styles.detailLabel}>Available Seats</Text>
-              <Text style={styles.detailValue}>
-                {ride.availableSeats} / {ride.totalSeats}
-              </Text>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Available Seats</Text>
+                <Text style={styles.detailValue}>
+                  {ride.availableSeats} / {ride.totalSeats}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailIcon}>💵</Text>
-              <Text style={styles.detailLabel}>Price per Seat</Text>
-              <Text style={styles.detailValue}>{ride.price} BHD</Text>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Price per Seat</Text>
+                <Text style={styles.detailValue}>{ride.price} BHD</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -314,7 +419,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   mapContainer: {
-    height: 250,
+    height: 300,
     backgroundColor: '#E5E7EB',
     position: 'relative',
   },
@@ -322,33 +427,105 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  directionsButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    backgroundColor: '#3A85BD',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  markerContainer: {
+    alignItems: 'center',
+  },
+  marker: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
   },
-  directionsButtonText: {
-    color: '#FFFFFF',
+  markerPickup: {
+    backgroundColor: '#10B981',
+  },
+  markerDropoff: {
+    backgroundColor: '#EF4444',
+  },
+  markerText: {
+    fontSize: 20,
+  },
+  markerLabel: {
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  markerLabelText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#1F2937',
+  },
+  directionsButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: '#3A85BD',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  directionsIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  directionsText: {
+    color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  distanceBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  distanceText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#3A85BD',
   },
   section: {
     padding: 16,
+  },
+  routeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 12,
+  },
+  distanceDisplay: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3A85BD',
   },
   driverCard: {
     flexDirection: 'row',
@@ -385,11 +562,21 @@ const styles = StyleSheet.create({
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 2,
   },
   rating: {
     fontSize: 14,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  ratingText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginLeft: 4,
+  },
+  phoneText: {
+    fontSize: 14,
+    color: '#6B7280',
   },
   callButton: {
     width: 44,
@@ -438,7 +625,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#1F2937',
   },
-  routeDivider: {
+  routeLine: {
     height: 30,
     width: 2,
     backgroundColor: '#E5E7EB',
@@ -462,14 +649,18 @@ const styles = StyleSheet.create({
   detailIcon: {
     fontSize: 20,
     marginRight: 12,
+    width: 30,
+  },
+  detailContent: {
+    flex: 1,
   },
   detailLabel: {
-    flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
+    marginBottom: 2,
   },
   detailValue: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
   },

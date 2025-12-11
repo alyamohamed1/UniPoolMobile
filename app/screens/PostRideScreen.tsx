@@ -18,11 +18,42 @@ import { useAuth } from '../../src/context/AuthContext';
 import { rideService } from '../../src/services/ride.service';
 import { useToast } from '../../src/context/ToastContext';
 
+// Common Bahrain locations with coordinates
+const BAHRAIN_LOCATIONS: { [key: string]: { lat: number; lng: number } } = {
+  'aubh': { lat: 26.0667, lng: 50.5577 },
+  'american university': { lat: 26.0667, lng: 50.5577 },
+  'american university of bahrain': { lat: 26.0667, lng: 50.5577 },
+  'sakhir': { lat: 26.1833, lng: 50.5500 },
+  'muharraq': { lat: 26.2575, lng: 50.6119 },
+  'manama': { lat: 26.2285, lng: 50.5860 },
+  'riffa': { lat: 26.1299, lng: 50.5550 },
+  'isa town': { lat: 26.1736, lng: 50.5478 },
+  'hamad town': { lat: 26.1147, lng: 50.5028 },
+  'city centre': { lat: 26.2285, lng: 50.5860 },
+  'city center': { lat: 26.2285, lng: 50.5860 },
+  'seef': { lat: 26.2361, lng: 50.5339 },
+  'seef mall': { lat: 26.2361, lng: 50.5339 },
+  'bahrain mall': { lat: 26.2167, lng: 50.5861 },
+  'airport': { lat: 26.2708, lng: 50.6336 },
+  'bahrain airport': { lat: 26.2708, lng: 50.6336 },
+  'amwaj': { lat: 26.2857, lng: 50.6595 },
+  'amwaj islands': { lat: 26.2857, lng: 50.6595 },
+  'budaiya': { lat: 26.1500, lng: 50.4667 },
+  'juffair': { lat: 26.2236, lng: 50.6086 },
+  'adliya': { lat: 26.2167, lng: 50.5833 },
+  'zinj': { lat: 26.2167, lng: 50.5667 },
+  'sanabis': { lat: 26.2167, lng: 50.5667 },
+  'salmaniya': { lat: 26.2167, lng: 50.5833 },
+  'exhibition': { lat: 26.1833, lng: 50.5833 },
+  'exhibition avenue': { lat: 26.1833, lng: 50.5833 },
+};
+
 export default function PostRideScreen({ navigation }: any) {
   const { user, userData } = useAuth();
   const { showToast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [location, setLocation] = useState<any>(null);
+  const [geocoding, setGeocoding] = useState(false);
 
   const [rideData, setRideData] = useState({
     pickupLocation: '',
@@ -68,6 +99,38 @@ export default function PostRideScreen({ navigation }: any) {
     setRideData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // ✅ NEW: Geocode location name to coordinates
+  const geocodeLocation = async (locationName: string): Promise<{ lat: number; lng: number } | null> => {
+    if (!locationName.trim()) return null;
+
+    // First, check common locations
+    const normalizedName = locationName.toLowerCase().trim();
+    for (const [key, coords] of Object.entries(BAHRAIN_LOCATIONS)) {
+      if (normalizedName.includes(key)) {
+        console.log(`Found ${locationName} in common locations:`, coords);
+        return coords;
+      }
+    }
+
+    // If not found in common locations, try geocoding
+    try {
+      console.log(`Geocoding: ${locationName}`);
+      const results = await Location.geocodeAsync(locationName + ', Bahrain');
+      
+      if (results.length > 0) {
+        console.log(`Geocoded ${locationName}:`, results[0]);
+        return {
+          lat: results[0].latitude,
+          lng: results[0].longitude,
+        };
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+    }
+
+    return null;
+  };
+
   const validateInputs = (): boolean => {
     if (!rideData.pickupLocation.trim()) {
       showToast('Please enter pickup location', 'warning');
@@ -108,17 +171,31 @@ export default function PostRideScreen({ navigation }: any) {
     }
 
     setSubmitting(true);
+    setGeocoding(true);
 
     try {
-      // Use current location or default Bahrain coordinates
-      const pickupCoords = location || { latitude: 26.0667, longitude: 50.5577 };
+      // ✅ Geocode both locations
+      showToast('Finding locations on map...', 'info', 2000);
       
-      // For demo, use slightly offset coordinates for dropoff
-      // In production, you'd geocode the actual addresses
-      const dropoffCoords = {
-        latitude: pickupCoords.latitude + 0.01,
-        longitude: pickupCoords.longitude + 0.01,
-      };
+      const pickupCoords = await geocodeLocation(rideData.pickupLocation);
+      const dropoffCoords = await geocodeLocation(rideData.dropoffLocation);
+
+      setGeocoding(false);
+
+      if (!pickupCoords) {
+        setSubmitting(false);
+        showToast(`Could not find "${rideData.pickupLocation}" on map. Try: AUBH, Muharraq, Manama, etc.`, 'error');
+        return;
+      }
+
+      if (!dropoffCoords) {
+        setSubmitting(false);
+        showToast(`Could not find "${rideData.dropoffLocation}" on map. Try: AUBH, Muharraq, Manama, etc.`, 'error');
+        return;
+      }
+
+      console.log('Pickup coordinates:', pickupCoords);
+      console.log('Dropoff coordinates:', dropoffCoords);
 
       const result = await rideService.createRide({
         driverId: user.uid,
@@ -127,10 +204,10 @@ export default function PostRideScreen({ navigation }: any) {
         driverRating: userData.rating || 5.0,
         from: rideData.pickupLocation,
         to: rideData.dropoffLocation,
-        pickupLat: pickupCoords.latitude,
-        pickupLng: pickupCoords.longitude,
-        dropoffLat: dropoffCoords.latitude,
-        dropoffLng: dropoffCoords.longitude,
+        pickupLat: pickupCoords.lat,
+        pickupLng: pickupCoords.lng,
+        dropoffLat: dropoffCoords.lat,
+        dropoffLng: dropoffCoords.lng,
         date: rideData.date,
         time: rideData.time,
         totalSeats: parseInt(rideData.seats),
@@ -152,6 +229,7 @@ export default function PostRideScreen({ navigation }: any) {
       }
     } catch (error) {
       setSubmitting(false);
+      setGeocoding(false);
       showToast('An unexpected error occurred', 'error');
       console.error('Post ride error:', error);
     }
@@ -182,7 +260,7 @@ export default function PostRideScreen({ navigation }: any) {
           <View style={styles.infoCard}>
             <Text style={styles.infoIcon}>🚗</Text>
             <Text style={styles.infoText}>
-              Post your ride and riders will send you requests to join
+              Enter locations like: AUBH, Muharraq, City Center, Riffa, Manama
             </Text>
           </View>
 
@@ -196,7 +274,7 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>📍</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., Campus Building A"
+                    placeholder="e.g., AUBH, Muharraq, Riffa"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.pickupLocation}
                     onChangeText={(value) => handleChange('pickupLocation', value)}
@@ -211,7 +289,7 @@ export default function PostRideScreen({ navigation }: any) {
                   <Text style={styles.inputIcon}>🎯</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g., Downtown Mall"
+                    placeholder="e.g., City Center, Manama, Seef"
                     placeholderTextColor="#9CA3AF"
                     value={rideData.dropoffLocation}
                     onChangeText={(value) => handleChange('dropoffLocation', value)}
@@ -323,7 +401,12 @@ export default function PostRideScreen({ navigation }: any) {
             disabled={submitting}
           >
             {submitting ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={styles.loadingText}>
+                  {geocoding ? 'Finding locations...' : 'Posting ride...'}
+                </Text>
+              </View>
             ) : (
               <Text style={styles.postButtonText}>POST RIDE</Text>
             )}
@@ -495,5 +578,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 12,
   },
 });
