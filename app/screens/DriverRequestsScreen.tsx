@@ -6,6 +6,7 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
@@ -18,6 +19,8 @@ export default function DriverRequestsScreen({ navigation }: any) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed'>('pending');
 
   const loadBookings = async () => {
     if (!user) return;
@@ -48,24 +51,143 @@ export default function DriverRequestsScreen({ navigation }: any) {
     loadBookings();
   };
 
+  const handleConfirmBooking = async (bookingId: string) => {
+    Alert.alert(
+      'Confirm Booking',
+      'Accept this ride request?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Accept',
+          onPress: async () => {
+            try {
+              if (!user) return;
+              
+              setProcessingId(bookingId);
+              const result = await bookingService.confirmBooking(bookingId, user.uid);
+
+              if (result.success) {
+                showToast('Booking confirmed successfully!', 'success');
+                loadBookings();
+              } else {
+                showToast(result.error || 'Failed to confirm booking', 'error');
+              }
+            } catch (error) {
+              showToast('An unexpected error occurred', 'error');
+            } finally {
+              setProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRejectBooking = async (bookingId: string) => {
+    Alert.alert(
+      'Reject Booking',
+      'Are you sure you want to reject this request?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!user) return;
+              
+              setProcessingId(bookingId);
+              const result = await bookingService.rejectBooking(bookingId, user.uid);
+
+              if (result.success) {
+                showToast('Booking rejected', 'info');
+                loadBookings();
+              } else {
+                showToast(result.error || 'Failed to reject booking', 'error');
+              }
+            } catch (error) {
+              showToast('An unexpected error occurred', 'error');
+            } finally {
+              setProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleCancelBooking = async (bookingId: string) => {
-    try {
-      if (!user) return;
+    Alert.alert(
+      'Cancel Confirmed Booking',
+      'This will cancel the confirmed booking and restore the seats. Continue?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!user) return;
 
-      const result = await bookingService.cancelBooking(bookingId, user.uid);
+              const result = await bookingService.cancelBooking(bookingId, user.uid);
 
-      if (result.success) {
-        showToast('Booking cancelled successfully', 'success');
-        loadBookings();
-      } else {
-        showToast(result.error || 'Failed to cancel booking', 'error');
-      }
-    } catch (error) {
-      showToast('An unexpected error occurred', 'error');
+              if (result.success) {
+                showToast('Booking cancelled successfully', 'success');
+                loadBookings();
+              } else {
+                showToast(result.error || 'Failed to cancel booking', 'error');
+              }
+            } catch (error) {
+              showToast('An unexpected error occurred', 'error');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return '#F59E0B';
+      case 'confirmed':
+        return '#10B981';
+      case 'rejected':
+        return '#EF4444';
+      case 'cancelled':
+        return '#6B7280';
+      default:
+        return '#9CA3AF';
+    }
+  };
+
+  const getStatusBgColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return '#FEF3C7';
+      case 'confirmed':
+        return '#D1FAE5';
+      case 'rejected':
+        return '#FEE2E2';
+      case 'cancelled':
+        return '#F3F4F6';
+      default:
+        return '#F9FAFB';
     }
   };
 
   const renderBooking = ({ item }: { item: Booking }) => {
+    const isProcessing = processingId === item.id;
+
     return (
       <View style={styles.requestCard}>
         <View style={styles.requestHeader}>
@@ -82,15 +204,12 @@ export default function DriverRequestsScreen({ navigation }: any) {
             <View style={styles.riderDetails}>
               <Text style={styles.riderName}>{item.riderName}</Text>
               {item.riderPhone && (
-                <Text style={styles.totalRides}>📞 {item.riderPhone}</Text>
+                <Text style={styles.phoneText}>📞 {item.riderPhone}</Text>
               )}
             </View>
           </View>
-          <View style={styles.seatsInfo}>
-            <Text style={styles.seatsNumber}>
-              {item.status === 'confirmed' ? '✓' : 'X'}
-            </Text>
-            <Text style={styles.seatsLabel}>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusBgColor(item.status) }]}>
+            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
               {item.status.toUpperCase()}
             </Text>
           </View>
@@ -116,31 +235,74 @@ export default function DriverRequestsScreen({ navigation }: any) {
           </View>
         </View>
 
-        <View style={styles.timeContainer}>
-          <Text style={styles.timeIcon}>📅</Text>
-          <Text style={styles.timeText}>
-            {item.date} at {item.time}
-          </Text>
+        <View style={styles.detailsRow}>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailIcon}>📅</Text>
+            <Text style={styles.detailText}>{item.date} • {item.time}</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailIcon}>💺</Text>
+            <Text style={styles.detailText}>{item.seatsRequested} seat(s)</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailIcon}>💵</Text>
+            <Text style={styles.detailText}>{item.price} BHD</Text>
+          </View>
         </View>
 
-        <View style={styles.messageContainer}>
-          <Text style={styles.messageLabel}>Price</Text>
-          <Text style={styles.messageText}>{item.price} BHD</Text>
-        </View>
+        {item.status === 'pending' && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.rejectButton, isProcessing && styles.buttonDisabled]}
+              onPress={() => handleRejectBooking(item.id!)}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <Text style={styles.rejectText}>Reject</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.acceptButton, isProcessing && styles.buttonDisabled]}
+              onPress={() => handleConfirmBooking(item.id!)}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.acceptText}>Accept</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {item.status === 'confirmed' && (
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.declineButton}
+              style={styles.cancelConfirmedButton}
               onPress={() => handleCancelBooking(item.id!)}
             >
-              <Text style={styles.declineText}>Cancel Booking</Text>
+              <Text style={styles.cancelConfirmedText}>Cancel Booking</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {item.status === 'rejected' && (
+          <View style={styles.rejectedNote}>
+            <Text style={styles.rejectedText}>You rejected this request</Text>
           </View>
         )}
       </View>
     );
   };
+
+  // Filter bookings based on selected filter
+  const filteredBookings = bookings.filter(booking => {
+    if (filter === 'pending') return booking.status === 'pending';
+    if (filter === 'confirmed') return booking.status === 'confirmed';
+    return true; // 'all'
+  });
 
   if (loading) {
     return (
@@ -164,8 +326,36 @@ export default function DriverRequestsScreen({ navigation }: any) {
         <View style={styles.placeholder} />
       </View>
 
+      {/* Filter Tabs */}
+      <View style={styles.filterContainer}>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'pending' && styles.filterTabActive]}
+          onPress={() => setFilter('pending')}
+        >
+          <Text style={[styles.filterText, filter === 'pending' && styles.filterTextActive]}>
+            Pending ({bookings.filter(b => b.status === 'pending').length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'confirmed' && styles.filterTabActive]}
+          onPress={() => setFilter('confirmed')}
+        >
+          <Text style={[styles.filterText, filter === 'confirmed' && styles.filterTextActive]}>
+            Confirmed ({bookings.filter(b => b.status === 'confirmed').length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'all' && styles.filterTabActive]}
+          onPress={() => setFilter('all')}
+        >
+          <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
+            All ({bookings.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
-        data={bookings}
+        data={filteredBookings}
         keyExtractor={(item) => item.id!}
         renderItem={renderBooking}
         onRefresh={handleRefresh}
@@ -174,9 +364,15 @@ export default function DriverRequestsScreen({ navigation }: any) {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyText}>No bookings yet</Text>
+            <Text style={styles.emptyText}>
+              {filter === 'pending' ? 'No pending requests' :
+               filter === 'confirmed' ? 'No confirmed bookings' :
+               'No bookings yet'}
+            </Text>
             <Text style={styles.emptySubtext}>
-              When riders book your rides, they'll appear here
+              {filter === 'pending' 
+                ? 'New booking requests will appear here'
+                : 'When riders book your rides, they\'ll appear here'}
             </Text>
           </View>
         }
@@ -185,7 +381,6 @@ export default function DriverRequestsScreen({ navigation }: any) {
   );
 }
 
-// ✅ KEEP YOUR EXACT STYLESHEET - NO CHANGES!
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -220,18 +415,32 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
-  infoBar: {
-    backgroundColor: '#FEF3C7',
-    paddingVertical: 8,
+  filterContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#FDE68A',
+    borderBottomColor: '#E5E7EB',
   },
-  infoText: {
-    fontSize: 14,
-    color: '#92400E',
+  filterTab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  filterTabActive: {
+    backgroundColor: '#3A85BD',
+  },
+  filterText: {
+    fontSize: 13,
     fontWeight: '600',
-    textAlign: 'center',
+    color: '#6B7280',
+  },
+  filterTextActive: {
+    color: '#FFFFFF',
   },
   list: {
     padding: 16,
@@ -275,7 +484,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: {
-    fontSize: 24,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   riderDetails: {
     flex: 1,
@@ -286,35 +497,18 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 4,
   },
-  riderStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rating: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#F59E0B',
-  },
-  totalRides: {
-    fontSize: 14,
+  phoneText: {
+    fontSize: 13,
     color: '#6B7280',
-    marginLeft: 4,
   },
-  seatsInfo: {
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
   },
-  seatsNumber: {
-    fontSize: 24,
+  statusText: {
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#3A85BD',
-  },
-  seatsLabel: {
-    fontSize: 12,
-    color: '#6B7280',
   },
   routeContainer: {
     marginBottom: 16,
@@ -349,67 +543,76 @@ const styles = StyleSheet.create({
     marginLeft: 7,
     marginBottom: 8,
   },
-  timeContainer: {
+  detailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
-  timeIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  timeText: {
+  detailIcon: {
     fontSize: 14,
-    color: '#6B7280',
+    marginRight: 4,
   },
-  messageContainer: {
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  messageLabel: {
+  detailText: {
     fontSize: 12,
-    fontWeight: '600',
     color: '#6B7280',
-    marginBottom: 4,
-  },
-  messageText: {
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
   },
   actions: {
     flexDirection: 'row',
     gap: 12,
   },
-  declineButton: {
+  rejectButton: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#EF4444',
     alignItems: 'center',
   },
-  declineText: {
-    fontSize: 16,
+  rejectText: {
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#EF4444',
   },
   acceptButton: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#10B981',
     alignItems: 'center',
   },
   acceptText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  cancelConfirmedButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+  },
+  cancelConfirmedText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  rejectedNote: {
+    padding: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+  },
+  rejectedText: {
+    fontSize: 13,
+    color: '#991B1B',
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',

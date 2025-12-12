@@ -9,7 +9,8 @@ import {
   updateDoc,
   Timestamp,
   orderBy,
-  increment
+  increment,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { rideService } from './ride.service';
@@ -31,18 +32,21 @@ export interface Booking {
   date: string;
   time: string;
   price: number;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  seatsRequested: number;
+  status: 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'completed';
   bookedAt: Date | Timestamp;
+  respondedAt?: Date | Timestamp;
 }
 
 export const bookingService = {
   /**
-   * Create a new booking (Rider books a ride)
+   * Create a new booking request (Rider books a ride - immediately reserves seats)
    */
   async createBooking(
     rideId: string,
     riderId: string,
     riderName: string,
+    seatsRequested: number = 1,
     riderPhone?: string
   ): Promise<{
     success: boolean;
@@ -63,10 +67,10 @@ export const bookingService = {
       const ride = rideResult.ride;
 
       // Check if ride is still available
-      if (ride.availableSeats < 1) {
+      if (ride.availableSeats < seatsRequested) {
         return {
           success: false,
-          error: 'No seats available for this ride',
+          error: `Only ${ride.availableSeats} seat(s) available`,
         };
       }
 
@@ -77,24 +81,32 @@ export const bookingService = {
         };
       }
 
-      // Check if rider already booked this ride
+      // Check if rider is trying to book their own ride
+      if (ride.driverId === riderId) {
+        return {
+          success: false,
+          error: 'You cannot book your own ride',
+        };
+      }
+
+      // Check if rider already has a pending or confirmed booking for this ride
       const existingBooking = await getDocs(
         query(
           collection(db, 'bookings'),
           where('rideId', '==', rideId),
           where('riderId', '==', riderId),
-          where('status', '!=', 'cancelled')
+          where('status', 'in', ['pending', 'confirmed'])
         )
       );
 
       if (!existingBooking.empty) {
         return {
           success: false,
-          error: 'You have already booked this ride',
+          error: 'You already have a booking request for this ride',
         };
       }
 
-      // Create the booking
+      // Create the booking with PENDING status and IMMEDIATELY decrement seats
       const bookingData: Omit<Booking, 'id'> = {
         rideId,
         riderId,
@@ -110,43 +122,156 @@ export const bookingService = {
         dropoffLng: ride.dropoffLng,
         date: ride.date,
         time: ride.time,
-        price: ride.price,
-        status: 'confirmed',
+        price: ride.price * seatsRequested,
+        seatsRequested,
+        status: 'pending', // Starts as pending, driver must confirm
         bookedAt: Timestamp.now(),
       };
 
-      const docRef = await addDoc(collection(db, 'bookings'), bookingData);
+      // Use batch to create booking and decrement seats atomically
+      const batch = writeBatch(db);
 
-      // Update the ride - decrement available seats
-      const bookRideResult = await rideService.bookRide(rideId);
+      // Create the booking
+      const bookingRef = doc(collection(db, 'bookings'));
+      batch.set(bookingRef, bookingData);
 
-      if (!bookRideResult.success) {
-        // If booking the ride failed, we should cancel this booking
-        await updateDoc(doc(db, 'bookings', docRef.id), {
-          status: 'cancelled',
-        });
+      // Immediately decrement available seats
+      batch.update(doc(db, 'rides', rideId), {
+        availableSeats: increment(-seatsRequested),
+      });
 
-        return {
-          success: false,
-          error: bookRideResult.error,
-        };
-      }
+      await batch.commit();
 
       return {
         success: true,
-        bookingId: docRef.id,
+        bookingId: bookingRef.id,
       };
     } catch (error) {
       console.error('Error creating booking:', error);
       return {
         success: false,
-        error: 'Failed to book ride',
+        error: 'Failed to create booking request',
       };
     }
   },
 
   /**
-   * Get all bookings for a specific ride (Driver sees who booked their ride)
+   * Driver confirms a booking request (seats already reserved)
+   */
+  async confirmBooking(
+    bookingId: string,
+    driverId: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Get booking details
+      const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
+
+      if (!bookingDoc.exists()) {
+        return {
+          success: false,
+          error: 'Booking not found',
+        };
+      }
+
+      const booking = bookingDoc.data() as Booking;
+
+      // Verify this is the driver's booking to confirm
+      if (booking.driverId !== driverId) {
+        return {
+          success: false,
+          error: 'You can only confirm your own ride bookings',
+        };
+      }
+
+      // Check if already confirmed or rejected
+      if (booking.status !== 'pending') {
+        return {
+          success: false,
+          error: `This booking is already ${booking.status}`,
+        };
+      }
+
+      // Update booking status to confirmed
+      // Note: Seats were already decremented when booking was created
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        status: 'confirmed',
+        respondedAt: Timestamp.now(),
+      });
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error confirming booking:', error);
+      return {
+        success: false,
+        error: 'Failed to confirm booking',
+      };
+    }
+  },
+
+  /**
+   * Driver rejects a booking request
+   */
+  async rejectBooking(
+    bookingId: string,
+    driverId: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Get booking details
+      const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
+
+      if (!bookingDoc.exists()) {
+        return {
+          success: false,
+          error: 'Booking not found',
+        };
+      }
+
+      const booking = bookingDoc.data() as Booking;
+
+      // Verify this is the driver's booking to reject
+      if (booking.driverId !== driverId) {
+        return {
+          success: false,
+          error: 'You can only reject your own ride bookings',
+        };
+      }
+
+      // Check if already rejected or cancelled
+      if (booking.status !== 'pending') {
+        return {
+          success: false,
+          error: `This booking is already ${booking.status}`,
+        };
+      }
+
+      // Update booking status to rejected
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        status: 'rejected',
+        respondedAt: Timestamp.now(),
+      });
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error rejecting booking:', error);
+      return {
+        success: false,
+        error: 'Failed to reject booking',
+      };
+    }
+  },
+
+  /**
+   * Get all bookings for a specific ride (Driver sees who requested their ride)
    */
   async getRideBookings(rideId: string): Promise<{
     success: boolean;
@@ -157,17 +282,20 @@ export const bookingService = {
       const q = query(
         collection(db, 'bookings'),
         where('rideId', '==', rideId),
-        where('status', '==', 'confirmed'),
         orderBy('bookedAt', 'desc')
       );
 
       const querySnapshot = await getDocs(q);
 
-      const bookings: Booking[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        bookedAt: doc.data().bookedAt?.toDate() || new Date(),
-      })) as Booking[];
+      const bookings: Booking[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
+          respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+        } as Booking;
+      });
 
       return {
         success: true,
@@ -195,17 +323,20 @@ export const bookingService = {
       const q = query(
         collection(db, 'bookings'),
         where('driverId', '==', driverId),
-        where('status', '==', 'confirmed'),
         orderBy('bookedAt', 'desc')
       );
 
       const querySnapshot = await getDocs(q);
 
-      const bookings: Booking[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        bookedAt: doc.data().bookedAt?.toDate() || new Date(),
-      })) as Booking[];
+      const bookings: Booking[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
+          respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+        } as Booking;
+      });
 
       return {
         success: true,
@@ -216,6 +347,47 @@ export const bookingService = {
       return {
         success: false,
         error: 'Failed to fetch your bookings',
+        bookings: [],
+      };
+    }
+  },
+
+  /**
+   * Get pending booking requests for a driver
+   */
+  async getPendingBookings(driverId: string): Promise<{
+    success: boolean;
+    error?: string;
+    bookings?: Booking[];
+  }> {
+    try {
+      const q = query(
+        collection(db, 'bookings'),
+        where('driverId', '==', driverId),
+        where('status', '==', 'pending'),
+        orderBy('bookedAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      const bookings: Booking[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
+        } as Booking;
+      });
+
+      return {
+        success: true,
+        bookings,
+      };
+    } catch (error) {
+      console.error('Error getting pending bookings:', error);
+      return {
+        success: false,
+        error: 'Failed to fetch pending requests',
         bookings: [],
       };
     }
@@ -238,11 +410,15 @@ export const bookingService = {
 
       const querySnapshot = await getDocs(q);
 
-      const bookings: Booking[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        bookedAt: doc.data().bookedAt?.toDate() || new Date(),
-      })) as Booking[];
+      const bookings: Booking[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
+          respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+        } as Booking;
+      });
 
       return {
         success: true,
@@ -259,7 +435,7 @@ export const bookingService = {
   },
 
   /**
-   * Cancel a booking
+   * Cancel a booking (can be done by rider or driver)
    */
   async cancelBooking(bookingId: string, userId: string): Promise<{
     success: boolean;
@@ -286,15 +462,25 @@ export const bookingService = {
         };
       }
 
+      // If booking was confirmed, need to restore seats
+      const wasConfirmed = booking.status === 'confirmed';
+
+      // Use batch to update both booking and ride (if needed)
+      const batch = writeBatch(db);
+
       // Update booking status
-      await updateDoc(doc(db, 'bookings', bookingId), {
+      batch.update(doc(db, 'bookings', bookingId), {
         status: 'cancelled',
       });
 
-      // Increment available seats back
-      await updateDoc(doc(db, 'rides', booking.rideId), {
-        availableSeats: increment(1),
-      });
+      // If was confirmed, restore the seats
+      if (wasConfirmed) {
+        batch.update(doc(db, 'rides', booking.rideId), {
+          availableSeats: increment(booking.seatsRequested),
+        });
+      }
+
+      await batch.commit();
 
       return {
         success: true,
@@ -330,6 +516,7 @@ export const bookingService = {
         id: bookingDoc.id,
         ...bookingDoc.data(),
         bookedAt: bookingDoc.data().bookedAt?.toDate() || new Date(),
+        respondedAt: bookingDoc.data().respondedAt?.toDate(),
       } as Booking;
 
       return {
@@ -342,6 +529,25 @@ export const bookingService = {
         success: false,
         error: 'Failed to fetch booking details',
       };
+    }
+  },
+
+  /**
+   * Get count of pending bookings for a driver (for badge/notification)
+   */
+  async getPendingBookingCount(driverId: string): Promise<number> {
+    try {
+      const q = query(
+        collection(db, 'bookings'),
+        where('driverId', '==', driverId),
+        where('status', '==', 'pending')
+      );
+
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.size;
+    } catch (error) {
+      console.error('Error getting pending count:', error);
+      return 0;
     }
   },
 };
