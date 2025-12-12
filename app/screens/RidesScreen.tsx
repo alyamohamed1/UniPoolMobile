@@ -11,24 +11,37 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { bookingService, Booking } from '../../src/services/booking.service';
+import { rideService, Ride } from '../../src/services/ride.service';
 
 export default function RidesScreen({ navigation }: any) {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('past');
+  const { user, userData } = useAuth();
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadBookings = async () => {
+  // Determine if user is a driver or rider
+  const isDriver = userData?.role === 'driver';
+
+  const loadData = async () => {
     if (!user) return;
 
     try {
-      const result = await bookingService.getRiderBookings(user.uid);
-
-      if (result.success && result.bookings) {
-        setBookings(result.bookings);
+      if (isDriver) {
+        // Load driver's posted rides
+        const result = await rideService.getDriverRides(user.uid);
+        if (result.success && result.rides) {
+          setRides(result.rides);
+        }
       } else {
-        Alert.alert('Error', result.error || 'Failed to load rides');
+        // Load rider's bookings
+        const result = await bookingService.getRiderBookings(user.uid);
+        if (result.success && result.bookings) {
+          setBookings(result.bookings);
+        } else {
+          Alert.alert('Error', result.error || 'Failed to load rides');
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'An unexpected error occurred');
@@ -40,12 +53,12 @@ export default function RidesScreen({ navigation }: any) {
   };
 
   useEffect(() => {
-    loadBookings();
-  }, [user]);
+    loadData();
+  }, [user, userData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    loadBookings();
+    loadData();
   };
 
   const handleCancelRide = (bookingId: string) => {
@@ -68,7 +81,7 @@ export default function RidesScreen({ navigation }: any) {
 
               if (result.success) {
                 Alert.alert('Success', 'Ride cancelled successfully');
-                loadBookings(); // Refresh list
+                loadData(); // Refresh list
               } else {
                 Alert.alert('Error', result.error || 'Failed to cancel ride');
               }
@@ -81,7 +94,41 @@ export default function RidesScreen({ navigation }: any) {
     );
   };
 
-  const renderRideItem = ({ item }: { item: Booking }) => {
+  const handleDeleteRide = (rideId: string) => {
+    Alert.alert(
+      'Delete Ride',
+      'Are you sure you want to delete this ride? All bookings will be cancelled.',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!user) return;
+
+              const result = await rideService.deleteRide(rideId, user.uid);
+
+              if (result.success) {
+                Alert.alert('Success', 'Ride deleted successfully');
+                loadData();
+              } else {
+                Alert.alert('Error', result.error || 'Failed to delete ride');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'An unexpected error occurred');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Render for RIDER (bookings)
+  const renderRiderRide = ({ item }: { item: Booking }) => {
     const isUpcoming = item.status === 'confirmed';
     const isPast = item.status === 'completed' || item.status === 'cancelled';
 
@@ -135,14 +182,83 @@ export default function RidesScreen({ navigation }: any) {
     );
   };
 
-  // Filter bookings based on active tab
-  const filteredBookings = bookings.filter((booking) => {
-    if (activeTab === 'upcoming') {
-      return booking.status === 'confirmed';
+  // Render for DRIVER (posted rides)
+  const renderDriverRide = ({ item }: { item: Ride }) => {
+    const isActive = item.status === 'active';
+    const isPast = item.status === 'completed' || item.status === 'cancelled';
+
+    return (
+      <View style={styles.rideCard}>
+        <View style={styles.rideHeader}>
+          <Text style={styles.rideName}>
+            {item.status === 'active' ? '🟢 Active' : 
+             item.status === 'completed' ? '✅ Completed' : 
+             '❌ Cancelled'}
+          </Text>
+          <Text style={styles.ridePrice}>{item.price} BHD/seat</Text>
+        </View>
+        
+        <View style={styles.routeContainer}>
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>📍</Text>
+            <Text style={styles.routeText}>{item.from}</Text>
+          </View>
+          <View style={styles.routeLine} />
+          <View style={styles.routeItem}>
+            <Text style={styles.routeIcon}>🎯</Text>
+            <Text style={styles.routeText}>{item.to}</Text>
+          </View>
+        </View>
+
+        <View style={styles.rideFooter}>
+          <View style={styles.rideDetails}>
+            <Text style={styles.rideDate}>{item.date} • {item.time}</Text>
+            <Text style={styles.seatsInfo}>
+              💺 {item.availableSeats}/{item.totalSeats} seats available
+            </Text>
+          </View>
+          
+          {item.status === 'active' && (
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={styles.viewBookingsButton}
+                onPress={() => navigation.navigate('DriverRequests')}
+              >
+                <Text style={styles.viewBookingsText}>Bookings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteRide(item.id!)}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  // Filter data based on active tab and user role
+  const getFilteredData = () => {
+    if (isDriver) {
+      // Filter driver's rides
+      if (activeTab === 'upcoming') {
+        return rides.filter(r => r.status === 'active');
+      } else {
+        return rides.filter(r => r.status === 'completed' || r.status === 'cancelled');
+      }
     } else {
-      return booking.status === 'completed' || booking.status === 'cancelled';
+      // Filter rider's bookings
+      if (activeTab === 'upcoming') {
+        return bookings.filter(b => b.status === 'confirmed');
+      } else {
+        return bookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+      }
     }
-  });
+  };
+
+  const filteredData = getFilteredData();
 
   if (loading) {
     return (
@@ -172,7 +288,7 @@ export default function RidesScreen({ navigation }: any) {
           onPress={() => setActiveTab('upcoming')}
         >
           <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>
-            Upcoming
+            {isDriver ? 'Active' : 'Upcoming'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -185,35 +301,69 @@ export default function RidesScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={filteredBookings}
-        renderItem={renderRideItem}
-        keyExtractor={(item) => item.id!}
-        contentContainerStyle={styles.list}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🚗</Text>
-            <Text style={styles.emptyText}>
-              {activeTab === 'upcoming' ? 'No upcoming rides' : 'No past rides yet'}
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {activeTab === 'upcoming' 
-                ? 'Book a ride to get started!'
-                : 'Your ride history will appear here'}
-            </Text>
-            {activeTab === 'upcoming' && (
-              <TouchableOpacity
-                style={styles.searchButton}
-                onPress={() => navigation.navigate('SearchDrivers')}
-              >
-                <Text style={styles.searchButtonText}>Search Rides</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        }
-      />
+      {isDriver ? (
+        // Driver view - show posted rides
+        <FlatList
+          data={filteredData as Ride[]}
+          renderItem={renderDriverRide}
+          keyExtractor={(item) => item.id!}
+          contentContainerStyle={styles.list}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🚗</Text>
+              <Text style={styles.emptyText}>
+                {activeTab === 'upcoming' ? 'No active rides' : 'No past rides yet'}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {activeTab === 'upcoming' 
+                  ? 'Post a ride to start earning!' 
+                  : 'Your ride history will appear here'}
+              </Text>
+              {activeTab === 'upcoming' && (
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={() => navigation.navigate('PostRide')}
+                >
+                  <Text style={styles.searchButtonText}>Post a Ride</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
+        />
+      ) : (
+        // Rider view - show bookings
+        <FlatList
+          data={filteredData as Booking[]}
+          renderItem={renderRiderRide}
+          keyExtractor={(item) => item.id!}
+          contentContainerStyle={styles.list}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🚗</Text>
+              <Text style={styles.emptyText}>
+                {activeTab === 'upcoming' ? 'No upcoming rides' : 'No past rides yet'}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {activeTab === 'upcoming' 
+                  ? 'Book a ride to get started!' 
+                  : 'Your ride history will appear here'}
+              </Text>
+              {activeTab === 'upcoming' && (
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={() => navigation.navigate('SearchDrivers')}
+                >
+                  <Text style={styles.searchButtonText}>Search Rides</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -343,9 +493,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  rideDetails: {
+    flex: 1,
+  },
   rideDate: {
     fontSize: 12,
     color: '#9CA3AF',
+    marginBottom: 4,
+  },
+  seatsInfo: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  viewBookingsButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#7F7CAF',
+    borderRadius: 16,
+  },
+  viewBookingsText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#EF4444',
+    borderRadius: 16,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   rateButton: {
     paddingVertical: 6,
