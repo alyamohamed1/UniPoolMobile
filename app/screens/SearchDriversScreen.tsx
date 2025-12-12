@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
@@ -15,27 +16,74 @@ import { rideService, Ride } from '../../src/services/ride.service';
 import { matchingService, RideMatch } from '../../src/services/matching.service';
 
 export default function SearchDriversScreen({ route, navigation }: any) {
-  const { user } = useAuth();
-  const { pickup, dropoff, date, time } = route.params || {};
+  // ✅ FIXED: Better parameter extraction with defaults
+  const { 
+    pickup, 
+    dropoff, 
+    pickupAddress = '', 
+    dropoffAddress = '',
+    date = new Date().toISOString().split('T')[0], 
+    time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  } = route.params || {};
   
+  const { user } = useAuth();
   const [rides, setRides] = useState<RideMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'match' | 'price' | 'time'>('match');
 
+  // ✅ FIXED: Comprehensive validation on mount
   useEffect(() => {
-    if (!pickup || !dropoff) {
-      // Navigate back if required params are missing
-      navigation.goBack();
-      return;
+    validateParams();
+  }, []);
+
+  useEffect(() => {
+    if (pickup && dropoff && pickup.latitude && dropoff.latitude) {
+      loadAvailableRides();
     }
-    loadAvailableRides();
   }, [sortBy, pickup, dropoff]);
 
+  const validateParams = () => {
+    // Check if params exist
+    if (!pickup || !dropoff) {
+      Alert.alert(
+        'Missing Location Data',
+        'Please select pickup and destination locations first',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return false;
+    }
+
+    // Check if coordinates are valid
+    if (!pickup.latitude || !pickup.longitude || !dropoff.latitude || !dropoff.longitude) {
+      Alert.alert(
+        'Invalid Location Data',
+        'Location coordinates are missing. Please select locations again.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return false;
+    }
+
+    // Validate coordinate ranges (basic validation)
+    if (pickup.latitude < -90 || pickup.latitude > 90 || 
+        pickup.longitude < -180 || pickup.longitude > 180 ||
+        dropoff.latitude < -90 || dropoff.latitude > 90 ||
+        dropoff.longitude < -180 || dropoff.longitude > 180) {
+      Alert.alert(
+        'Invalid Coordinates',
+        'The location coordinates are out of valid range. Please try again.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return false;
+    }
+
+    return true;
+  };
+
   const loadAvailableRides = async () => {
-    // Safety check
-    if (!pickup || !dropoff || !pickup.latitude || !dropoff.latitude) {
-      console.error('Missing location data');
+    // Safety check before loading
+    if (!pickup?.latitude || !dropoff?.latitude) {
+      console.error('Missing location data in loadAvailableRides');
       setLoading(false);
       return;
     }
@@ -51,6 +99,12 @@ export default function SearchDriversScreen({ route, navigation }: any) {
         const availableRides = result.rides.filter(
           (ride) => ride.driverId !== user?.uid
         );
+
+        if (availableRides.length === 0) {
+          setRides([]);
+          setLoading(false);
+          return;
+        }
 
         // Apply intelligent matching
         const matchedRides = matchingService.getRecommendedRides(
@@ -70,9 +124,13 @@ export default function SearchDriversScreen({ route, navigation }: any) {
         // Apply sorting
         const sortedRides = sortRides(matchedRides, sortBy);
         setRides(sortedRides);
+      } else {
+        setRides([]);
       }
     } catch (error) {
       console.error('Error loading rides:', error);
+      Alert.alert('Error', 'Failed to load available rides. Please try again.');
+      setRides([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -149,7 +207,7 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           <View style={styles.driverInfo}>
             <Text style={styles.driverName}>{item.driverName}</Text>
             <View style={styles.ratingRow}>
-              <Text style={styles.ratingText}>⭐ 4.8</Text>
+              <Text style={styles.ratingText}>⭐ {item.driverRating || 4.8}</Text>
               <Text style={styles.seatsText}>
                 💺 {item.availableSeats}/{item.totalSeats} seats
               </Text>
@@ -253,29 +311,43 @@ export default function SearchDriversScreen({ route, navigation }: any) {
   const renderHeader = () => {
     return (
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Available Rides</Text>
-        <Text style={styles.headerSubtitle}>
-          Found {rides.length} ride{rides.length !== 1 ? 's' : ''} matching your route
-        </Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backIcon}>←</Text>
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Available Rides</Text>
+          <Text style={styles.headerSubtitle}>
+            Found {rides.length} ride{rides.length !== 1 ? 's' : ''} matching your route
+          </Text>
+        </View>
       </View>
     );
   };
 
-  if (loading) {
+  // ✅ FIXED: Better loading state
+  if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container}>
+        {renderHeader()}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#7F7CAF" />
           <Text style={styles.loadingText}>Finding best rides for you...</Text>
+          <Text style={styles.loadingSubtext}>
+            Searching from {pickupAddress || 'your location'} to {dropoffAddress || 'destination'}
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Check if required params are missing
-  if (!pickup || !dropoff) {
+  // ✅ FIXED: Check if required params are missing after initial load
+  if (!pickup || !dropoff || !pickup.latitude || !dropoff.latitude) {
     return (
       <SafeAreaView style={styles.container}>
+        {renderHeader()}
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>📍</Text>
           <Text style={styles.emptyTitle}>Missing Location Data</Text>
@@ -283,10 +355,10 @@ export default function SearchDriversScreen({ route, navigation }: any) {
             Please select pickup and dropoff locations first
           </Text>
           <TouchableOpacity
-            style={styles.backButton}
+            style={styles.backToSearchButton}
             onPress={() => navigation.goBack()}
           >
-            <Text style={styles.backButtonText}>Go Back</Text>
+            <Text style={styles.backToSearchButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -295,23 +367,26 @@ export default function SearchDriversScreen({ route, navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {renderHeader()}
+      {renderSortOptions()}
+      
       <FlatList
         data={rides}
         renderItem={renderRideCard}
-        keyExtractor={(item) => item.id || ''}
-        ListHeaderComponent={
-          <>
-            {renderHeader()}
-            {renderSortOptions()}
-          </>
-        }
+        keyExtractor={(item, index) => item.id || `ride-${index}`}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🚗</Text>
             <Text style={styles.emptyTitle}>No rides found</Text>
             <Text style={styles.emptyText}>
-              Try adjusting your search or check back later
+              No rides match your route right now. Try adjusting your locations or check back later.
             </Text>
+            <TouchableOpacity
+              style={styles.backToSearchButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backToSearchButtonText}>Search Again</Text>
+            </TouchableOpacity>
           </View>
         }
         refreshControl={
@@ -332,35 +407,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  backIcon: {
+    fontSize: 24,
+    color: '#7F7CAF',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
     color: '#6B7280',
+    textAlign: 'center',
   },
   listContent: {
     padding: 16,
     paddingBottom: 32,
   },
-  header: {
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
   sortContainer: {
-    marginBottom: 16,
+    padding: 16,
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   sortLabel: {
     fontSize: 14,
@@ -560,6 +668,7 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 40,
   },
   emptyIcon: {
     fontSize: 64,
@@ -575,16 +684,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
-    paddingHorizontal: 40,
+    lineHeight: 20,
+    marginBottom: 24,
   },
-  backButton: {
+  backToSearchButton: {
     backgroundColor: '#7F7CAF',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    marginTop: 16,
   },
-  backButtonText: {
+  backToSearchButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',

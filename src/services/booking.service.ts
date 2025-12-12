@@ -23,6 +23,7 @@ export interface Booking {
   riderPhone?: string;
   driverId: string;
   driverName: string;
+  driverPhone?: string;
   from: string;
   to: string;
   pickupLat: number;
@@ -41,13 +42,12 @@ export interface Booking {
 
 export const bookingService = {
   /**
-   * Create a new booking request (Rider books a ride - immediately reserves seats)
+   * ✅ FIXED: Create a new booking request (Rider books a ride - seats NOT decremented until confirmed)
    */
   async createBooking(
     rideId: string,
     riderId: string,
     riderName: string,
-    seatsRequested: number = 1,
     riderPhone?: string
   ): Promise<{
     success: boolean;
@@ -67,11 +67,11 @@ export const bookingService = {
 
       const ride = rideResult.ride;
 
-      // Check if ride is still available
-      if (ride.availableSeats < seatsRequested) {
+      // Check if ride is still available (has at least 1 seat)
+      if (ride.availableSeats < 1) {
         return {
           success: false,
-          error: `Only ${ride.availableSeats} seat(s) available`,
+          error: 'No seats available for this ride',
         };
       }
 
@@ -107,7 +107,8 @@ export const bookingService = {
         };
       }
 
-      // Create the booking with PENDING status and IMMEDIATELY decrement seats
+      // ✅ FIXED: Create the booking with PENDING status WITHOUT decrementing seats
+      // Seats will only be decremented when driver confirms the booking
       const bookingData: Omit<Booking, 'id'> = {
         rideId,
         riderId,
@@ -115,6 +116,7 @@ export const bookingService = {
         riderPhone,
         driverId: ride.driverId,
         driverName: ride.driverName,
+        driverPhone: ride.driverPhone,
         from: ride.from,
         to: ride.to,
         pickupLat: ride.pickupLat,
@@ -123,25 +125,14 @@ export const bookingService = {
         dropoffLng: ride.dropoffLng,
         date: ride.date,
         time: ride.time,
-        price: ride.price * seatsRequested,
-        seatsRequested,
+        price: ride.price, // Price for 1 seat (seatsRequested is always 1 for now)
+        seatsRequested: 1, // Currently only supporting 1 seat per booking
         status: 'pending', // Starts as pending, driver must confirm
         bookedAt: Timestamp.now(),
       };
 
-      // Use batch to create booking and decrement seats atomically
-      const batch = writeBatch(db);
-
-      // Create the booking
-      const bookingRef = doc(collection(db, 'bookings'));
-      batch.set(bookingRef, bookingData);
-
-      // Immediately decrement available seats
-      batch.update(doc(db, 'rides', rideId), {
-        availableSeats: increment(-seatsRequested),
-      });
-
-      await batch.commit();
+      // ✅ Simply create the booking without touching ride seats
+      const bookingRef = await addDoc(collection(db, 'bookings'), bookingData);
 
       return {
         success: true,
@@ -157,7 +148,7 @@ export const bookingService = {
   },
 
   /**
-   * Driver confirms a booking request (seats already reserved)
+   * ✅ FIXED: Driver confirms a booking request (NOW decrements seats)
    */
   async confirmBooking(
     bookingId: string,
@@ -195,12 +186,38 @@ export const bookingService = {
         };
       }
 
+      // ✅ Check if ride still has available seats
+      const rideResult = await rideService.getRideById(booking.rideId);
+      if (!rideResult.success || !rideResult.ride) {
+        return {
+          success: false,
+          error: 'Ride not found',
+        };
+      }
+
+      const ride = rideResult.ride;
+      if (ride.availableSeats < booking.seatsRequested) {
+        return {
+          success: false,
+          error: 'Not enough seats available for this booking',
+        };
+      }
+
+      // ✅ Use batch to update booking status AND decrement seats atomically
+      const batch = writeBatch(db);
+
       // Update booking status to confirmed
-      // Note: Seats were already decremented when booking was created
-      await updateDoc(doc(db, 'bookings', bookingId), {
+      batch.update(doc(db, 'bookings', bookingId), {
         status: 'confirmed',
         respondedAt: Timestamp.now(),
       });
+
+      // ✅ NOW decrement the available seats
+      batch.update(doc(db, 'rides', booking.rideId), {
+        availableSeats: increment(-booking.seatsRequested),
+      });
+
+      await batch.commit();
 
       return {
         success: true,
@@ -215,7 +232,7 @@ export const bookingService = {
   },
 
   /**
-   * Driver rejects a booking request
+   * ✅ FIXED: Driver rejects a booking request (no seat restoration needed since seats were never decremented)
    */
   async rejectBooking(
     bookingId: string,
@@ -253,7 +270,8 @@ export const bookingService = {
         };
       }
 
-      // Update booking status to rejected
+      // ✅ Simply update booking status to rejected
+      // No need to restore seats since they were never decremented
       await updateDoc(doc(db, 'bookings', bookingId), {
         status: 'rejected',
         respondedAt: Timestamp.now(),
@@ -436,7 +454,7 @@ export const bookingService = {
   },
 
   /**
-   * Cancel a booking (can be done by rider or driver)
+   * ✅ FIXED: Cancel a booking (restore seats only if booking was confirmed)
    */
   async cancelBooking(bookingId: string, userId: string): Promise<{
     success: boolean;
@@ -463,8 +481,24 @@ export const bookingService = {
         };
       }
 
-      // If booking was confirmed, need to restore seats
-      const wasConfirmed = booking.status === 'confirmed';
+      // Check if booking can be cancelled
+      if (booking.status === 'cancelled') {
+        return {
+          success: false,
+          error: 'This booking is already cancelled',
+        };
+      }
+
+      if (booking.status === 'completed') {
+        return {
+          success: false,
+          error: 'Cannot cancel a completed booking',
+        };
+      }
+
+      // ✅ FIXED: Only restore seats if booking was confirmed
+      // If pending or rejected, seats were never decremented
+      const shouldRestoreSeats = booking.status === 'confirmed';
 
       // Use batch to update both booking and ride (if needed)
       const batch = writeBatch(db);
@@ -474,8 +508,8 @@ export const bookingService = {
         status: 'cancelled',
       });
 
-      // If was confirmed, restore the seats
-      if (wasConfirmed) {
+      // ✅ Only restore seats if booking was confirmed
+      if (shouldRestoreSeats) {
         batch.update(doc(db, 'rides', booking.rideId), {
           availableSeats: increment(booking.seatsRequested),
         });

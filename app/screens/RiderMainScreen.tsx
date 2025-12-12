@@ -324,12 +324,51 @@ export default function RiderMainScreen({ navigation }: any) {
     setManualDestinationInput('');
   };
 
+  // ✅ FIXED: Now properly passes all required parameters
   const handleSearchDrivers = () => {
+    // Validate that locations are selected
     if (!currentLocation || !destination) {
       Alert.alert('Missing Information', 'Please select both pickup and destination locations');
       return;
     }
-    navigation.navigate('SearchDrivers');
+
+    // Validate that coordinates exist
+    if (!currentLocationCoords || !destinationCoords) {
+      Alert.alert('Error', 'Could not determine coordinates for your locations. Please try selecting them again.');
+      return;
+    }
+
+    // Validate coordinates have required properties
+    if (!currentLocationCoords.latitude || !currentLocationCoords.longitude ||
+        !destinationCoords.latitude || !destinationCoords.longitude) {
+      Alert.alert('Error', 'Invalid location coordinates. Please select locations again.');
+      return;
+    }
+
+    // Get current date and time
+    const currentDate = new Date();
+    const formattedDate = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD
+    const formattedTime = currentDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // ✅ Navigate with ALL required parameters
+    navigation.navigate('SearchDrivers', {
+      pickup: {
+        latitude: currentLocationCoords.latitude,
+        longitude: currentLocationCoords.longitude,
+      },
+      dropoff: {
+        latitude: destinationCoords.latitude,
+        longitude: destinationCoords.longitude,
+      },
+      pickupAddress: currentLocation,
+      dropoffAddress: destination,
+      date: formattedDate,
+      time: formattedTime,
+    });
   };
 
   return (
@@ -353,8 +392,8 @@ export default function RiderMainScreen({ navigation }: any) {
             </View>
           ) : (
             <MapView
-              style={styles.map}
               provider={PROVIDER_GOOGLE}
+              style={styles.map}
               region={mapRegion}
               onRegionChangeComplete={setMapRegion}
               showsUserLocation={true}
