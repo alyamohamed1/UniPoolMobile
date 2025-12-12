@@ -190,7 +190,7 @@ export default function RidesScreen({ navigation }: any) {
           {item.status === 'completed' && (
             <TouchableOpacity
               style={styles.rateButton}
-              onPress={() => navigation.navigate('RateDriver', { bookingId: item.id })}
+              onPress={() => navigation.navigate('Rating', { bookingId: item.id })}
             >
               <Text style={styles.rateButtonText}>Rate</Text>
             </TouchableOpacity>

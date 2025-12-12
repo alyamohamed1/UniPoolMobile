@@ -36,6 +36,7 @@ export interface Booking {
   status: 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'completed';
   bookedAt: Date | Timestamp;
   respondedAt?: Date | Timestamp;
+  completedAt?: Date | Timestamp;
 }
 
 export const bookingService = {
@@ -548,6 +549,120 @@ export const bookingService = {
     } catch (error) {
       console.error('Error getting pending count:', error);
       return 0;
+    }
+  },
+
+  /**
+   * Complete a booking after the ride is finished (Driver only)
+   */
+  async completeBooking(
+    bookingId: string,
+    driverId: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Get booking details
+      const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
+
+      if (!bookingDoc.exists()) {
+        return {
+          success: false,
+          error: 'Booking not found',
+        };
+      }
+
+      const booking = bookingDoc.data() as Booking;
+
+      // Verify this is the driver's booking
+      if (booking.driverId !== driverId) {
+        return {
+          success: false,
+          error: 'You can only complete your own ride bookings',
+        };
+      }
+
+      // Check if booking is confirmed
+      if (booking.status !== 'confirmed') {
+        return {
+          success: false,
+          error: 'Only confirmed bookings can be completed',
+        };
+      }
+
+      // Update booking status to completed
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        status: 'completed',
+        completedAt: Timestamp.now(),
+      });
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error completing booking:', error);
+      return {
+        success: false,
+        error: 'Failed to complete booking',
+      };
+    }
+  },
+
+  /**
+   * Complete all bookings for a ride (Driver marks entire ride as complete)
+   */
+  async completeRide(
+    rideId: string,
+    driverId: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Get all confirmed bookings for this ride
+      const q = query(
+        collection(db, 'bookings'),
+        where('rideId', '==', rideId),
+        where('driverId', '==', driverId),
+        where('status', '==', 'confirmed')
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        return {
+          success: false,
+          error: 'No confirmed bookings found for this ride',
+        };
+      }
+
+      // Update all bookings to completed
+      const batch = writeBatch(db);
+
+      querySnapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: 'completed',
+          completedAt: Timestamp.now(),
+        });
+      });
+
+      // Update ride status to completed
+      batch.update(doc(db, 'rides', rideId), {
+        status: 'completed',
+      });
+
+      await batch.commit();
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error completing ride:', error);
+      return {
+        success: false,
+        error: 'Failed to complete ride',
+      };
     }
   },
 };

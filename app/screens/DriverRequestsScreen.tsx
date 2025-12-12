@@ -155,6 +155,41 @@ export default function DriverRequestsScreen({ navigation }: any) {
     );
   };
 
+  const handleCompleteBooking = async (bookingId: string) => {
+    if (!user) return;
+
+    Alert.alert(
+      'Mark as Completed',
+      'Has this ride been completed? Both you and the rider will be able to leave ratings.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Complete',
+          onPress: async () => {
+            setProcessingId(bookingId);
+            try {
+              const result = await bookingService.completeBooking(bookingId, user.uid);
+
+              if (result.success) {
+                showToast('Ride marked as completed!', 'success');
+                loadBookings();
+              } else {
+                showToast(result.error || 'Failed to complete booking', 'error');
+              }
+            } catch (error) {
+              showToast('An unexpected error occurred', 'error');
+            } finally {
+              setProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
@@ -280,10 +315,22 @@ export default function DriverRequestsScreen({ navigation }: any) {
         {item.status === 'confirmed' && (
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.cancelConfirmedButton}
+              style={[styles.cancelConfirmedButton, isProcessing && styles.buttonDisabled]}
               onPress={() => handleCancelBooking(item.id!)}
+              disabled={isProcessing}
             >
-              <Text style={styles.cancelConfirmedText}>Cancel Booking</Text>
+              <Text style={styles.cancelConfirmedText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.completeButton, isProcessing && styles.buttonDisabled]}
+              onPress={() => handleCompleteBooking(item.id!)}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.completeText}>Complete Ride</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -600,6 +647,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelConfirmedText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  completeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  completeText: {
     fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
