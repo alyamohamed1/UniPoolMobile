@@ -129,14 +129,29 @@ export default function RidesScreen({ navigation }: any) {
 
   // Render for RIDER (bookings)
   const renderRiderRide = ({ item }: { item: Booking }) => {
-    const isUpcoming = item.status === 'confirmed';
-    const isPast = item.status === 'completed' || item.status === 'cancelled';
-
     return (
       <View style={styles.rideCard}>
         <View style={styles.rideHeader}>
           <Text style={styles.rideName}>🚗 {item.driverName}</Text>
           <Text style={styles.ridePrice}>{item.price} BHD</Text>
+        </View>
+        
+        {/* Status Badge */}
+        <View style={[
+          styles.statusBadge,
+          item.status === 'pending' && styles.pendingBadge,
+          item.status === 'confirmed' && styles.confirmedBadge,
+          item.status === 'rejected' && styles.rejectedBadge,
+          item.status === 'cancelled' && styles.cancelledBadge,
+          item.status === 'completed' && styles.completedBadge,
+        ]}>
+          <Text style={styles.statusText}>
+            {item.status === 'pending' && '⏳ PENDING APPROVAL'}
+            {item.status === 'confirmed' && '✅ CONFIRMED'}
+            {item.status === 'rejected' && '❌ REJECTED'}
+            {item.status === 'cancelled' && '🚫 CANCELLED'}
+            {item.status === 'completed' && '✓ COMPLETED'}
+          </Text>
         </View>
         
         <View style={styles.routeContainer}>
@@ -152,7 +167,16 @@ export default function RidesScreen({ navigation }: any) {
         </View>
 
         <View style={styles.rideFooter}>
-          <Text style={styles.rideDate}>{item.date} • {item.time}</Text>
+          <View>
+            <Text style={styles.rideDate}>{item.date} • {item.time}</Text>
+            <Text style={styles.seatsInfo}>💺 {item.seatsRequested} seat(s)</Text>
+          </View>
+          
+          {item.status === 'pending' && (
+            <View style={styles.waitingBadge}>
+              <Text style={styles.waitingText}>Waiting for driver</Text>
+            </View>
+          )}
           
           {item.status === 'confirmed' && (
             <TouchableOpacity
@@ -172,9 +196,9 @@ export default function RidesScreen({ navigation }: any) {
             </TouchableOpacity>
           )}
 
-          {item.status === 'cancelled' && (
-            <View style={styles.cancelledBadge}>
-              <Text style={styles.cancelledText}>Cancelled</Text>
+          {item.status === 'rejected' && (
+            <View style={styles.rejectedInfo}>
+              <Text style={styles.rejectedInfoText}>Request was declined</Text>
             </View>
           )}
         </View>
@@ -251,9 +275,15 @@ export default function RidesScreen({ navigation }: any) {
     } else {
       // Filter rider's bookings
       if (activeTab === 'upcoming') {
-        return bookings.filter(b => b.status === 'confirmed');
+        // Show both pending (waiting approval) and confirmed (approved) bookings
+        return bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
       } else {
-        return bookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+        // Show completed, cancelled, and rejected bookings
+        return bookings.filter(b => 
+          b.status === 'completed' || 
+          b.status === 'cancelled' || 
+          b.status === 'rejected'
+        );
       }
     }
   };
@@ -501,10 +531,6 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginBottom: 4,
   },
-  seatsInfo: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
@@ -595,5 +621,58 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Status Badge Styles
+  statusBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  pendingBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+  confirmedBadge: {
+    backgroundColor: '#D1FAE5',
+  },
+  rejectedBadge: {
+    backgroundColor: '#FEE2E2',
+  },
+  completedBadge: {
+    backgroundColor: '#E0E7FF',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  waitingBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+  },
+  waitingText: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  rejectedInfo: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+  },
+  rejectedInfoText: {
+    color: '#991B1B',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  seatsInfo: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
   },
 });
