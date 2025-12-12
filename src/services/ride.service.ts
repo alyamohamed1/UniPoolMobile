@@ -157,42 +157,47 @@ export const rideService = {
   /**
    * Create a new ride
    */
-  async createRide(
-    driverId: string,
-    driverName: string,
-    from: string,
-    to: string,
-    pickupLat: number,
-    pickupLng: number,
-    dropoffLat: number,
-    dropoffLng: number,
-    date: string,
-    time: string,
-    price: number,
-    totalSeats: number,
-    driverPhone?: string
-  ): Promise<{
+  async createRide(params: {
+    driverId: string;
+    driverName: string;
+    driverPhone?: string;
+    driverRating?: number;
+    from: string;
+    to: string;
+    pickupLat: number;
+    pickupLng: number;
+    dropoffLat: number;
+    dropoffLng: number;
+    date: string;
+    time: string;
+    price: number;
+    totalSeats: number;
+    availableSeats: number;
+    notes?: string;
+    status: 'active' | 'completed' | 'cancelled';
+  }): Promise<{
     success: boolean;
     rideId?: string;
     error?: string;
   }> {
     try {
       const rideData: Omit<Ride, 'id'> = {
-        driverId,
-        driverName,
-        driverPhone,
-        from,
-        to,
-        pickupLat,
-        pickupLng,
-        dropoffLat,
-        dropoffLng,
-        date,
-        time,
-        price,
-        totalSeats,
-        availableSeats: totalSeats,
-        status: 'active',
+        driverId: params.driverId,
+        driverName: params.driverName,
+        driverPhone: params.driverPhone,
+        driverRating: params.driverRating,
+        from: params.from,
+        to: params.to,
+        pickupLat: params.pickupLat,
+        pickupLng: params.pickupLng,
+        dropoffLat: params.dropoffLat,
+        dropoffLng: params.dropoffLng,
+        date: params.date,
+        time: params.time,
+        price: params.price,
+        totalSeats: params.totalSeats,
+        availableSeats: params.availableSeats || params.totalSeats,
+        status: params.status || 'active',
         passengers: [],
         createdAt: Timestamp.now(),
       };

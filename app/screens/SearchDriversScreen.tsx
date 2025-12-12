@@ -24,10 +24,22 @@ export default function SearchDriversScreen({ route, navigation }: any) {
   const [sortBy, setSortBy] = useState<'match' | 'price' | 'time'>('match');
 
   useEffect(() => {
+    if (!pickup || !dropoff) {
+      // Navigate back if required params are missing
+      navigation.goBack();
+      return;
+    }
     loadAvailableRides();
-  }, [sortBy]);
+  }, [sortBy, pickup, dropoff]);
 
   const loadAvailableRides = async () => {
+    // Safety check
+    if (!pickup || !dropoff || !pickup.latitude || !dropoff.latitude) {
+      console.error('Missing location data');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -255,6 +267,27 @@ export default function SearchDriversScreen({ route, navigation }: any) {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#7F7CAF" />
           <Text style={styles.loadingText}>Finding best rides for you...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Check if required params are missing
+  if (!pickup || !dropoff) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>📍</Text>
+          <Text style={styles.emptyTitle}>Missing Location Data</Text>
+          <Text style={styles.emptyText}>
+            Please select pickup and dropoff locations first
+          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -543,5 +576,17 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+  backButton: {
+    backgroundColor: '#7F7CAF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
