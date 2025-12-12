@@ -10,18 +10,44 @@ import {
   Platform,
   Modal,
   TextInput,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 
+// Bahrain center coordinates
+const BAHRAIN_CENTER = {
+  latitude: 26.0667,
+  longitude: 50.5577,
+  latitudeDelta: 0.3,
+  longitudeDelta: 0.3,
+};
+
+// Common Bahrain locations
+const BAHRAIN_LOCATIONS: { [key: string]: { lat: number; lng: number } } = {
+  'aubh': { lat: 26.0667, lng: 50.5577 },
+  'american university': { lat: 26.0667, lng: 50.5577 },
+  'sakhir': { lat: 26.1833, lng: 50.5500 },
+  'muharraq': { lat: 26.2575, lng: 50.6119 },
+  'manama': { lat: 26.2285, lng: 50.5860 },
+  'riffa': { lat: 26.1299, lng: 50.5550 },
+  'isa town': { lat: 26.1736, lng: 50.5478 },
+  'hamad town': { lat: 26.1147, lng: 50.5028 },
+  'city centre': { lat: 26.2285, lng: 50.5860 },
+  'seef': { lat: 26.2361, lng: 50.5339 },
+  'bahrain mall': { lat: 26.2167, lng: 50.5861 },
+  'airport': { lat: 26.2708, lng: 50.6336 },
+  'amwaj': { lat: 26.2857, lng: 50.6595 },
+  'budaiya': { lat: 26.1500, lng: 50.4667 },
+  'juffair': { lat: 26.2236, lng: 50.6086 },
+  'adliya': { lat: 26.2167, lng: 50.5833 },
+};
+
 export default function RiderMainScreen({ navigation }: any) {
-  const [location, setLocation] = useState<any>(null);
+  const [location, setLocation] = useState<any>(BAHRAIN_CENTER);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [mapRegion, setMapRegion] = useState<any>(null);
+  const [mapRegion, setMapRegion] = useState(BAHRAIN_CENTER);
   
   // Location selection states
   const [currentLocation, setCurrentLocation] = useState<string>('');
@@ -47,66 +73,42 @@ export default function RiderMainScreen({ navigation }: any) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       
-      if (status !== 'granted') {
-        setErrorMsg('Location permission denied. Please enable location in settings.');
-        setLoading(false);
-        // Use default Bahrain location
-        const defaultLocation = {
-          latitude: 26.0667,
-          longitude: 50.5577,
-        };
-        setLocation(defaultLocation);
-        setMapRegion({
-          latitude: 26.0667,
-          longitude: 50.5577,
-          latitudeDelta: 0.1,
-          longitudeDelta: 0.1,
+      if (status === 'granted') {
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
         });
-        setLoading(false);
-        return;
+
+        const coords = {
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        };
+
+        // Check if location is in Bahrain (rough bounds)
+        if (coords.latitude >= 25.5 && coords.latitude <= 26.5 &&
+            coords.longitude >= 50.0 && coords.longitude <= 51.0) {
+          setLocation(coords);
+          setMapRegion({
+            ...coords,
+            latitudeDelta: 0.1,
+            longitudeDelta: 0.1,
+          });
+        } else {
+          // Outside Bahrain, use default
+          setLocation(BAHRAIN_CENTER);
+          setMapRegion(BAHRAIN_CENTER);
+        }
+      } else {
+        setLocation(BAHRAIN_CENTER);
+        setMapRegion(BAHRAIN_CENTER);
       }
-
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      const coords = {
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
-      };
-
-      setLocation(coords);
-      setMapRegion({
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      });
+      
       setLoading(false);
     } catch (error) {
       console.error('Location error:', error);
-      setErrorMsg('Failed to get your location. Using default location.');
+      setLocation(BAHRAIN_CENTER);
+      setMapRegion(BAHRAIN_CENTER);
       setLoading(false);
-      
-      // Set default location (Bahrain center)
-      const defaultLocation = {
-        latitude: 26.0667,
-        longitude: 50.5577,
-      };
-      setLocation(defaultLocation);
-      setMapRegion({
-        latitude: 26.0667,
-        longitude: 50.5577,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      });
     }
-  };
-
-  const handleRetryLocation = () => {
-    setLoading(true);
-    setErrorMsg(null);
-    requestLocationPermission();
   };
 
   const handleMapPress = (event: any) => {
@@ -133,9 +135,30 @@ export default function RiderMainScreen({ navigation }: any) {
     }
 
     setSearchingAddress(true);
+    
+    // Check if it's a known location
+    const normalizedInput = manualLocationInput.toLowerCase().trim();
+    for (const [key, coords] of Object.entries(BAHRAIN_LOCATIONS)) {
+      if (normalizedInput.includes(key) || key.includes(normalizedInput)) {
+        setTempMarkerLocation({
+          latitude: coords.lat,
+          longitude: coords.lng,
+        });
+        setMapRegion({
+          latitude: coords.lat,
+          longitude: coords.lng,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        setSearchingAddress(false);
+        Alert.alert('Success', 'Location found! You can adjust the marker if needed.');
+        return;
+      }
+    }
+
+    // Try geocoding
     try {
-      // Try to geocode the address
-      const results = await Location.geocodeAsync(manualLocationInput);
+      const results = await Location.geocodeAsync(manualLocationInput + ', Bahrain');
       
       if (results.length > 0) {
         const coords = {
@@ -151,11 +174,11 @@ export default function RiderMainScreen({ navigation }: any) {
         });
         Alert.alert('Success', 'Location found! You can adjust the marker if needed.');
       } else {
-        Alert.alert('Not Found', 'Could not find that location. Please try a different address or use the map.');
+        Alert.alert('Not Found', 'Could not find that location. Try: AUBH, Manama, Riffa, etc.');
       }
     } catch (error) {
       console.error('Geocoding error:', error);
-      Alert.alert('Error', 'Could not search for that location. Please try using the map instead.');
+      Alert.alert('Error', 'Could not search for that location. Try using the map instead.');
     } finally {
       setSearchingAddress(false);
     }
@@ -168,8 +191,30 @@ export default function RiderMainScreen({ navigation }: any) {
     }
 
     setSearchingAddress(true);
+    
+    // Check if it's a known location
+    const normalizedInput = manualDestinationInput.toLowerCase().trim();
+    for (const [key, coords] of Object.entries(BAHRAIN_LOCATIONS)) {
+      if (normalizedInput.includes(key) || key.includes(normalizedInput)) {
+        setTempMarkerLocation({
+          latitude: coords.lat,
+          longitude: coords.lng,
+        });
+        setMapRegion({
+          latitude: coords.lat,
+          longitude: coords.lng,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        setSearchingAddress(false);
+        Alert.alert('Success', 'Destination found! You can adjust the marker if needed.');
+        return;
+      }
+    }
+
+    // Try geocoding
     try {
-      const results = await Location.geocodeAsync(manualDestinationInput);
+      const results = await Location.geocodeAsync(manualDestinationInput + ', Bahrain');
       
       if (results.length > 0) {
         const coords = {
@@ -185,11 +230,11 @@ export default function RiderMainScreen({ navigation }: any) {
         });
         Alert.alert('Success', 'Destination found! You can adjust the marker if needed.');
       } else {
-        Alert.alert('Not Found', 'Could not find that destination. Please try a different address or use the map.');
+        Alert.alert('Not Found', 'Could not find that destination. Try: City Centre, Seef, Juffair, etc.');
       }
     } catch (error) {
       console.error('Geocoding error:', error);
-      Alert.alert('Error', 'Could not search for that destination. Please try using the map instead.');
+      Alert.alert('Error', 'Could not search for that destination. Try using the map instead.');
     } finally {
       setSearchingAddress(false);
     }
@@ -203,11 +248,9 @@ export default function RiderMainScreen({ navigation }: any) {
 
     setCurrentLocationCoords(tempMarkerLocation);
     
-    // If user typed an address, use that
     if (manualLocationInput.trim()) {
       setCurrentLocation(manualLocationInput);
     } else {
-      // Otherwise, reverse geocode the coordinates
       try {
         const result = await Location.reverseGeocodeAsync({
           latitude: tempMarkerLocation.latitude,
@@ -219,7 +262,6 @@ export default function RiderMainScreen({ navigation }: any) {
           const parts = [];
           if (addr.street) parts.push(addr.street);
           if (addr.city) parts.push(addr.city);
-          if (addr.region) parts.push(addr.region);
           
           const addressString = parts.length > 0 
             ? parts.join(', ') 
@@ -248,11 +290,9 @@ export default function RiderMainScreen({ navigation }: any) {
 
     setDestinationCoords(tempMarkerLocation);
     
-    // If user typed an address, use that
     if (manualDestinationInput.trim()) {
       setDestination(manualDestinationInput);
     } else {
-      // Otherwise, reverse geocode the coordinates
       try {
         const result = await Location.reverseGeocodeAsync({
           latitude: tempMarkerLocation.latitude,
@@ -264,7 +304,6 @@ export default function RiderMainScreen({ navigation }: any) {
           const parts = [];
           if (addr.street) parts.push(addr.street);
           if (addr.city) parts.push(addr.city);
-          if (addr.region) parts.push(addr.region);
           
           const addressString = parts.length > 0 
             ? parts.join(', ') 
@@ -312,15 +351,7 @@ export default function RiderMainScreen({ navigation }: any) {
               <ActivityIndicator size="large" color="#7F7CAF" />
               <Text style={styles.mapSubtext}>Loading map...</Text>
             </View>
-          ) : errorMsg ? (
-            <View style={styles.mapPlaceholder}>
-              <Text style={styles.mapText}>🗺️</Text>
-              <Text style={styles.errorText}>{errorMsg}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={handleRetryLocation}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : location && mapRegion ? (
+          ) : (
             <MapView
               style={styles.map}
               provider={PROVIDER_GOOGLE}
@@ -328,17 +359,7 @@ export default function RiderMainScreen({ navigation }: any) {
               onRegionChangeComplete={setMapRegion}
               showsUserLocation={true}
               showsMyLocationButton={true}
-              loadingEnabled={true}
             >
-              {/* User's current location */}
-              <Marker
-                coordinate={location}
-                title="Your Location"
-                description="You are here"
-                pinColor="blue"
-              />
-              
-              {/* Selected pickup location */}
               {currentLocationCoords && (
                 <Marker
                   coordinate={currentLocationCoords}
@@ -348,7 +369,6 @@ export default function RiderMainScreen({ navigation }: any) {
                 />
               )}
               
-              {/* Selected destination */}
               {destinationCoords && (
                 <Marker
                   coordinate={destinationCoords}
@@ -358,11 +378,6 @@ export default function RiderMainScreen({ navigation }: any) {
                 />
               )}
             </MapView>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Text style={styles.mapText}>🗺️</Text>
-              <Text style={styles.mapSubtext}>Unable to load map</Text>
-            </View>
           )}
         </View>
 
@@ -445,14 +460,13 @@ export default function RiderMainScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Location Selection Modal - FIXED LAYOUT */}
+      {/* Location Selection Modal */}
       <Modal
         visible={showLocationModal}
         animationType="slide"
         transparent={false}
       >
         <SafeAreaView style={styles.modalContainer} edges={['top']}>
-          {/* Fixed Header */}
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderContent}>
               <Text style={styles.modalTitle}>Select Pickup Location</Text>
@@ -469,13 +483,12 @@ export default function RiderMainScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* Search Input Section */}
           <View style={styles.searchInputSection}>
             <Text style={styles.searchInputLabel}>Type address or tap on map:</Text>
             <View style={styles.searchRow}>
               <TextInput
                 style={styles.searchInput}
-                placeholder="e.g., AUBH Sakhir"
+                placeholder="e.g., AUBH, Manama, Riffa"
                 placeholderTextColor="#9CA3AF"
                 value={manualLocationInput}
                 onChangeText={setManualLocationInput}
@@ -495,7 +508,6 @@ export default function RiderMainScreen({ navigation }: any) {
             </View>
           </View>
             
-          {/* Map Section */}
           <View style={styles.mapSection}>
             <MapView
               style={styles.fullMap}
@@ -516,7 +528,6 @@ export default function RiderMainScreen({ navigation }: any) {
             </MapView>
           </View>
 
-          {/* Fixed Footer */}
           <View style={styles.modalFooter}>
             <Text style={styles.modalInstruction}>
               {tempMarkerLocation 
@@ -537,14 +548,13 @@ export default function RiderMainScreen({ navigation }: any) {
         </SafeAreaView>
       </Modal>
 
-      {/* Destination Selection Modal - FIXED LAYOUT */}
+      {/* Destination Selection Modal */}
       <Modal
         visible={showDestinationModal}
         animationType="slide"
         transparent={false}
       >
         <SafeAreaView style={styles.modalContainer} edges={['top']}>
-          {/* Fixed Header */}
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderContent}>
               <Text style={styles.modalTitle}>Select Destination</Text>
@@ -561,13 +571,12 @@ export default function RiderMainScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* Search Input Section */}
           <View style={styles.searchInputSection}>
             <Text style={styles.searchInputLabel}>Type address or tap on map:</Text>
             <View style={styles.searchRow}>
               <TextInput
                 style={styles.searchInput}
-                placeholder="e.g., City Center Mall"
+                placeholder="e.g., City Centre, Seef, Juffair"
                 placeholderTextColor="#9CA3AF"
                 value={manualDestinationInput}
                 onChangeText={setManualDestinationInput}
@@ -587,7 +596,6 @@ export default function RiderMainScreen({ navigation }: any) {
             </View>
           </View>
             
-          {/* Map Section */}
           <View style={styles.mapSection}>
             <MapView
               style={styles.fullMap}
@@ -608,7 +616,6 @@ export default function RiderMainScreen({ navigation }: any) {
             </MapView>
           </View>
 
-          {/* Fixed Footer */}
           <View style={styles.modalFooter}>
             <Text style={styles.modalInstruction}>
               {tempMarkerLocation 
@@ -708,32 +715,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  mapText: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
   mapSubtext: {
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#EF4444',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: '#7F7CAF',
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
     marginTop: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
   searchContainer: {
     padding: 16,
@@ -837,7 +823,6 @@ const styles = StyleSheet.create({
     color: '#7F7CAF',
     fontWeight: '600',
   },
-  // ✅ FIXED MODAL STYLES
   modalContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',

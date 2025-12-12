@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,32 +11,75 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useAuth } from '../../src/context/AuthContext';
+import { rideService, Ride } from '../../src/services/ride.service';
 
 const { width } = Dimensions.get('window');
 
-const ACTIVE_RIDES = [
-  {
-    id: '1',
-    from: 'Campus Building A',
-    to: 'Downtown Mall',
-    time: '3:00 PM',
-    date: 'Today',
-    seats: 4,
-    requests: 3,
-    pickupCoords: { latitude: 26.0667, longitude: 50.5577 },
-    dropoffCoords: { latitude: 26.0800, longitude: 50.5700 },
-  },
-];
+// Bahrain center coordinates
+const BAHRAIN_CENTER = {
+  latitude: 26.0667,
+  longitude: 50.5577,
+  latitudeDelta: 0.4,
+  longitudeDelta: 0.4,
+};
 
 export default function DriverMainScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [isAvailable, setIsAvailable] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [activeRides, setActiveRides] = useState<Ride[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [mapRegion, setMapRegion] = useState(BAHRAIN_CENTER);
 
-  const mapRegion = {
-    latitude: 26.0733,
-    longitude: 50.5639,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
+  useEffect(() => {
+    loadActiveRides();
+  }, [user]);
+
+  useEffect(() => {
+    // Adjust map region to show all active rides
+    if (activeRides.length > 0) {
+      const lats = activeRides.flatMap(r => [r.pickupLat, r.dropoffLat]);
+      const lngs = activeRides.flatMap(r => [r.pickupLng, r.dropoffLng]);
+      
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLng = (minLng + maxLng) / 2;
+      const latDelta = Math.max((maxLat - minLat) * 1.5, 0.1);
+      const lngDelta = Math.max((maxLng - minLng) * 1.5, 0.1);
+      
+      setMapRegion({
+        latitude: centerLat,
+        longitude: centerLng,
+        latitudeDelta: latDelta,
+        longitudeDelta: lngDelta,
+      });
+    } else {
+      setMapRegion(BAHRAIN_CENTER);
+    }
+  }, [activeRides]);
+
+  const loadActiveRides = async () => {
+    if (!user) return;
+    
+    try {
+      const result = await rideService.getDriverRides(user.uid);
+      
+      if (result.success && result.rides) {
+        const active = result.rides.filter(
+          r => r.status === 'active' && r.availableSeats >= 0
+        );
+        setActiveRides(active);
+      }
+    } catch (error) {
+      console.error('Error loading rides:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,7 +116,7 @@ export default function DriverMainScreen({ navigation }: any) {
         </View>
 
         {/* MAP VIEW */}
-        {ACTIVE_RIDES.length > 0 && (
+        {activeRides.length > 0 && (
           <View style={styles.mapSection}>
             <View style={styles.mapHeader}>
               <Text style={styles.mapTitle}>Active Routes</Text>
@@ -90,23 +133,39 @@ export default function DriverMainScreen({ navigation }: any) {
                   provider={PROVIDER_GOOGLE}
                   style={styles.map}
                   region={mapRegion}
+                  onRegionChangeComplete={setMapRegion}
                 >
-                  {ACTIVE_RIDES.map((ride) => (
+                  {activeRides.map((ride) => (
                     <React.Fragment key={ride.id}>
                       <Marker
-                        coordinate={ride.pickupCoords}
+                        coordinate={{
+                          latitude: ride.pickupLat,
+                          longitude: ride.pickupLng,
+                        }}
                         title="Pickup"
                         description={ride.from}
                         pinColor="#10B981"
                       />
                       <Marker
-                        coordinate={ride.dropoffCoords}
+                        coordinate={{
+                          latitude: ride.dropoffLat,
+                          longitude: ride.dropoffLng,
+                        }}
                         title="Drop-off"
                         description={ride.to}
                         pinColor="#EF4444"
                       />
                       <Polyline
-                        coordinates={[ride.pickupCoords, ride.dropoffCoords]}
+                        coordinates={[
+                          {
+                            latitude: ride.pickupLat,
+                            longitude: ride.pickupLng,
+                          },
+                          {
+                            latitude: ride.dropoffLat,
+                            longitude: ride.dropoffLng,
+                          },
+                        ]}
                         strokeColor="#3A85BD"
                         strokeWidth={3}
                       />
@@ -140,13 +199,13 @@ export default function DriverMainScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Active Rides</Text>
           
-          {ACTIVE_RIDES.length > 0 ? (
-            ACTIVE_RIDES.map((ride) => (
+          {activeRides.length > 0 ? (
+            activeRides.map((ride) => (
               <View key={ride.id} style={styles.rideCard}>
                 <View style={styles.rideHeader}>
                   <Text style={styles.rideDate}>{ride.date}</Text>
-                  <View style={styles.requestsBadge}>
-                    <Text style={styles.requestsText}>{ride.requests} requests</Text>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusText2}>Active</Text>
                   </View>
                 </View>
                 
@@ -165,13 +224,15 @@ export default function DriverMainScreen({ navigation }: any) {
                 <View style={styles.rideFooter}>
                   <View style={styles.rideInfo}>
                     <Text style={styles.rideInfoText}>🕐 {ride.time}</Text>
-                    <Text style={styles.rideInfoText}>💺 {ride.seats} seats</Text>
+                    <Text style={styles.rideInfoText}>
+                      💺 {ride.availableSeats}/{ride.totalSeats} seats
+                    </Text>
                   </View>
                   <TouchableOpacity 
                     style={styles.viewRequestsButton}
                     onPress={() => navigation.navigate('DriverRequests')}
                   >
-                    <Text style={styles.viewRequestsText}>View Requests</Text>
+                    <Text style={styles.viewRequestsText}>View Bookings</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -189,16 +250,20 @@ export default function DriverMainScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>Today's Stats</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
-              <Text style={styles.statNumber}>0</Text>
-              <Text style={styles.statLabel}>Rides</Text>
+              <Text style={styles.statNumber}>{activeRides.length}</Text>
+              <Text style={styles.statLabel}>Active Rides</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statNumber}>$0</Text>
+              <Text style={styles.statNumber}>
+                {activeRides.reduce((sum, r) => sum + (r.totalSeats - r.availableSeats), 0)}
+              </Text>
+              <Text style={styles.statLabel}>Bookings</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>
+                {activeRides.reduce((sum, r) => sum + r.price * (r.totalSeats - r.availableSeats), 0)} BD
+              </Text>
               <Text style={styles.statLabel}>Earnings</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>0h</Text>
-              <Text style={styles.statLabel}>Online</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>5.0⭐</Text>
@@ -258,7 +323,7 @@ export default function DriverMainScreen({ navigation }: any) {
           onPress={() => navigation.navigate('DriverRequests')}
         >
           <Text style={styles.navIcon}>📨</Text>
-          <Text style={styles.navText}>Requests</Text>
+          <Text style={styles.navText}>Bookings</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.navItem}
@@ -335,6 +400,11 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  statusText2: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
   },
   mapSection: {
     marginHorizontal: 16,
@@ -435,16 +505,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
   },
-  requestsBadge: {
-    backgroundColor: '#FEE2E2',
+  statusBadge: {
+    backgroundColor: '#D1FAE5',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-  },
-  requestsText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#DC2626',
   },
   routeContainer: {
     marginBottom: 12,
