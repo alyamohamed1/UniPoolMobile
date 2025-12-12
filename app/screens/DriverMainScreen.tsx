@@ -37,7 +37,7 @@ export default function DriverMainScreen({ navigation }: any) {
   }, [user]);
 
   useEffect(() => {
-    // Adjust map region to show all active rides
+    // Adjust map region to show all active rides, or show Bahrain if none
     if (activeRides.length > 0) {
       const lats = activeRides.flatMap(r => [r.pickupLat, r.dropoffLat]);
       const lngs = activeRides.flatMap(r => [r.pickupLng, r.dropoffLng]);
@@ -59,6 +59,7 @@ export default function DriverMainScreen({ navigation }: any) {
         longitudeDelta: lngDelta,
       });
     } else {
+      // No active rides, show full Bahrain view
       setMapRegion(BAHRAIN_CENTER);
     }
   }, [activeRides]);
@@ -115,67 +116,69 @@ export default function DriverMainScreen({ navigation }: any) {
           </Text>
         </View>
 
-        {/* MAP VIEW */}
-        {activeRides.length > 0 && (
-          <View style={styles.mapSection}>
-            <View style={styles.mapHeader}>
-              <Text style={styles.mapTitle}>Active Routes</Text>
-              <TouchableOpacity onPress={() => setShowMap(!showMap)}>
-                <Text style={styles.toggleMapText}>
-                  {showMap ? 'Hide Map' : 'Show Map'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            
-            {showMap && (
-              <View style={styles.mapContainer}>
-                <MapView
-                  provider={PROVIDER_GOOGLE}
-                  style={styles.map}
-                  region={mapRegion}
-                  onRegionChangeComplete={setMapRegion}
-                >
-                  {activeRides.map((ride) => (
-                    <React.Fragment key={ride.id}>
-                      <Marker
-                        coordinate={{
+        {/* MAP VIEW - Clean style with hide/show toggle */}
+        <View style={styles.mapSection}>
+          <View style={styles.mapHeader}>
+            <Text style={styles.mapTitle}>
+              {activeRides.length > 0 ? 'Active Routes' : 'Map View'}
+            </Text>
+            <TouchableOpacity onPress={() => setShowMap(!showMap)}>
+              <Text style={styles.toggleMapText}>
+                {showMap ? 'Hide Map' : 'Show Map'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showMap && (
+            <View style={styles.mapContainer}>
+              <MapView
+                provider={PROVIDER_GOOGLE}
+                style={styles.map}
+                region={mapRegion}
+                onRegionChangeComplete={setMapRegion}
+                showsUserLocation={true}
+                showsMyLocationButton={true}
+              >
+                {activeRides.map((ride) => (
+                  <React.Fragment key={ride.id}>
+                    <Marker
+                      coordinate={{
+                        latitude: ride.pickupLat,
+                        longitude: ride.pickupLng,
+                      }}
+                      title="Pickup"
+                      description={ride.from}
+                      pinColor="#10B981"
+                    />
+                    <Marker
+                      coordinate={{
+                        latitude: ride.dropoffLat,
+                        longitude: ride.dropoffLng,
+                      }}
+                      title="Drop-off"
+                      description={ride.to}
+                      pinColor="#EF4444"
+                    />
+                    <Polyline
+                      coordinates={[
+                        {
                           latitude: ride.pickupLat,
                           longitude: ride.pickupLng,
-                        }}
-                        title="Pickup"
-                        description={ride.from}
-                        pinColor="#10B981"
-                      />
-                      <Marker
-                        coordinate={{
+                        },
+                        {
                           latitude: ride.dropoffLat,
                           longitude: ride.dropoffLng,
-                        }}
-                        title="Drop-off"
-                        description={ride.to}
-                        pinColor="#EF4444"
-                      />
-                      <Polyline
-                        coordinates={[
-                          {
-                            latitude: ride.pickupLat,
-                            longitude: ride.pickupLng,
-                          },
-                          {
-                            latitude: ride.dropoffLat,
-                            longitude: ride.dropoffLng,
-                          },
-                        ]}
-                        strokeColor="#3A85BD"
-                        strokeWidth={3}
-                      />
-                    </React.Fragment>
-                  ))}
-                </MapView>
-              </View>
-            )}
-          </View>
-        )}
+                        },
+                      ]}
+                      strokeColor="#3A85BD"
+                      strokeWidth={3}
+                    />
+                  </React.Fragment>
+                ))}
+              </MapView>
+            </View>
+          )}
+        </View>
 
         {/* POST RIDE BUTTON */}
         <TouchableOpacity 
@@ -407,8 +410,7 @@ const styles = StyleSheet.create({
     color: '#10B981',
   },
   mapSection: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    margin: 16,
   },
   mapHeader: {
     flexDirection: 'row',
@@ -427,11 +429,10 @@ const styles = StyleSheet.create({
     color: '#3A85BD',
   },
   mapContainer: {
-    height: 250,
+    height: 300,
+    backgroundColor: '#E5E7EB',
     borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   map: {
     width: '100%',
