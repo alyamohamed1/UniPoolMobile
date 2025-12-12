@@ -6,11 +6,10 @@ import {
   doc,
   query,
   where,
-  updateDoc,
-  deleteDoc,
   orderBy,
   Timestamp,
-  increment,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -19,161 +18,61 @@ export interface Ride {
   driverId: string;
   driverName: string;
   driverPhone?: string;
-  driverRating?: number;
+  driverRating?: number; // Average rating for matching
   from: string;
   to: string;
-  // GPS coordinates
   pickupLat: number;
   pickupLng: number;
   dropoffLat: number;
   dropoffLng: number;
-  date: string; // Format: YYYY-MM-DD
-  time: string; // Format: HH:MM
+  date: string;
+  time: string;
+  price: number;
   totalSeats: number;
   availableSeats: number;
-  price: number;
-  notes?: string;
   status: 'active' | 'completed' | 'cancelled';
+  passengers?: string[];
   createdAt: Date | Timestamp;
 }
 
 export const rideService = {
   /**
-   * Driver posts a ride
+   * Get all active rides available for booking
    */
-  async createRide(rideData: Omit<Ride, 'id' | 'createdAt'>): Promise<{
+  async getActiveRides(): Promise<{
     success: boolean;
+    rides?: Ride[];
     error?: string;
-    rideId?: string;
   }> {
     try {
-      // Validate required fields
-      if (!rideData.driverId || !rideData.from || !rideData.to) {
-        return {
-          success: false,
-          error: 'Missing required fields',
-        };
-      }
+      const q = query(
+        collection(db, 'rides'),
+        where('status', '==', 'active'),
+        where('availableSeats', '>', 0),
+        orderBy('availableSeats', 'desc'),
+        orderBy('createdAt', 'desc')
+      );
 
-      // Validate GPS coordinates
-      if (!rideData.pickupLat || !rideData.pickupLng || 
-          !rideData.dropoffLat || !rideData.dropoffLng) {
-        return {
-          success: false,
-          error: 'Missing GPS coordinates',
-        };
-      }
+      const querySnapshot = await getDocs(q);
 
-      // Validate seats
-      if (rideData.totalSeats < 1 || rideData.totalSeats > 6) {
+      const rides: Ride[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
         return {
-          success: false,
-          error: 'Total seats must be between 1 and 6',
-        };
-      }
-
-      // Validate price
-      if (rideData.price < 0) {
-        return {
-          success: false,
-          error: 'Price cannot be negative',
-        };
-      }
-
-      // Add the ride to Firestore
-      const docRef = await addDoc(collection(db, 'rides'), {
-        ...rideData,
-        createdAt: Timestamp.now(),
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
+        } as Ride;
       });
 
       return {
         success: true,
-        rideId: docRef.id,
-      };
-    } catch (error) {
-      console.error('Error creating ride:', error);
-      return {
-        success: false,
-        error: 'Failed to create ride',
-      };
-    }
-  },
-
-  /**
-   * Get all available rides for riders to browse - FIXED WITHOUT COMPOSITE INDEX
-   */
-  async getAvailableRides(): Promise<{
-    success: boolean;
-    error?: string;
-    rides?: Ride[];
-  }> {
-    try {
-      // ✅ FIXED: Query only by status first, then filter in memory
-      // This avoids the composite index requirement
-      const q = query(
-        collection(db, 'rides'),
-        where('status', '==', 'active'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const querySnapshot = await getDocs(q);
-
-      // ✅ Filter in memory for rides with available seats
-      const rides: Ride[] = querySnapshot.docs
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate() || new Date(),
-        }))
-        .filter((ride: any) => ride.availableSeats > 0) as Ride[];
-
-      return {
-        success: true,
         rides,
       };
     } catch (error) {
-      console.error('Error getting available rides:', error);
+      console.error('Error getting active rides:', error);
       return {
         success: false,
-        error: 'Failed to fetch rides',
-        rides: [],
-      };
-    }
-  },
-
-  /**
-   * Get all rides posted by a specific driver
-   */
-  async getDriverRides(driverId: string): Promise<{
-    success: boolean;
-    error?: string;
-    rides?: Ride[];
-  }> {
-    try {
-      const q = query(
-        collection(db, 'rides'),
-        where('driverId', '==', driverId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const querySnapshot = await getDocs(q);
-
-      const rides: Ride[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-      })) as Ride[];
-
-      return {
-        success: true,
-        rides,
-      };
-    } catch (error) {
-      console.error('Error getting driver rides:', error);
-      return {
-        success: false,
-        error: 'Failed to fetch your rides',
-        rides: [],
+        error: 'Failed to fetch active rides',
       };
     }
   },
@@ -183,24 +82,24 @@ export const rideService = {
    */
   async getRideById(rideId: string): Promise<{
     success: boolean;
-    error?: string;
     ride?: Ride;
+    error?: string;
   }> {
     try {
-      const docRef = doc(db, 'rides', rideId);
-      const docSnap = await getDoc(docRef);
+      const rideDoc = await getDoc(doc(db, 'rides', rideId));
 
-      if (!docSnap.exists()) {
+      if (!rideDoc.exists()) {
         return {
           success: false,
           error: 'Ride not found',
         };
       }
 
+      const data = rideDoc.data();
       const ride: Ride = {
-        id: docSnap.id,
-        ...docSnap.data(),
-        createdAt: docSnap.data().createdAt?.toDate() || new Date(),
+        id: rideDoc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
       } as Ride;
 
       return {
@@ -217,128 +116,154 @@ export const rideService = {
   },
 
   /**
-   * Book a ride (decrement available seats)
+   * Get all rides posted by a specific driver
    */
-  async bookRide(rideId: string): Promise<{
+  async getDriverRides(driverId: string): Promise<{
     success: boolean;
+    rides?: Ride[];
     error?: string;
   }> {
     try {
-      // First check if ride exists and has available seats
-      const rideDoc = await getDoc(doc(db, 'rides', rideId));
+      const q = query(
+        collection(db, 'rides'),
+        where('driverId', '==', driverId),
+        orderBy('createdAt', 'desc')
+      );
 
-      if (!rideDoc.exists()) {
+      const querySnapshot = await getDocs(q);
+
+      const rides: Ride[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
         return {
-          success: false,
-          error: 'Ride not found',
-        };
-      }
-
-      const rideData = rideDoc.data() as Ride;
-
-      if (rideData.availableSeats < 1) {
-        return {
-          success: false,
-          error: 'No seats available',
-        };
-      }
-
-      if (rideData.status !== 'active') {
-        return {
-          success: false,
-          error: 'This ride is no longer active',
-        };
-      }
-
-      // Update the ride, decrement available seats atomically
-      await updateDoc(doc(db, 'rides', rideId), {
-        availableSeats: increment(-1),
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
+        } as Ride;
       });
 
       return {
         success: true,
+        rides,
       };
     } catch (error) {
-      console.error('Error booking ride:', error);
+      console.error('Error getting driver rides:', error);
       return {
         success: false,
-        error: 'Failed to book ride',
+        error: 'Failed to fetch driver rides',
       };
     }
   },
 
   /**
-   * Cancel a ride (Driver cancels their posted ride)
+   * Create a new ride
    */
-  async cancelRide(rideId: string, driverId: string): Promise<{
+  async createRide(
+    driverId: string,
+    driverName: string,
+    from: string,
+    to: string,
+    pickupLat: number,
+    pickupLng: number,
+    dropoffLat: number,
+    dropoffLng: number,
+    date: string,
+    time: string,
+    price: number,
+    totalSeats: number,
+    driverPhone?: string
+  ): Promise<{
     success: boolean;
+    rideId?: string;
     error?: string;
   }> {
     try {
-      // Verify the ride belongs to this driver
-      const rideDoc = await getDoc(doc(db, 'rides', rideId));
+      const rideData: Omit<Ride, 'id'> = {
+        driverId,
+        driverName,
+        driverPhone,
+        from,
+        to,
+        pickupLat,
+        pickupLng,
+        dropoffLat,
+        dropoffLng,
+        date,
+        time,
+        price,
+        totalSeats,
+        availableSeats: totalSeats,
+        status: 'active',
+        passengers: [],
+        createdAt: Timestamp.now(),
+      };
 
-      if (!rideDoc.exists()) {
-        return {
-          success: false,
-          error: 'Ride not found',
-        };
-      }
-
-      const rideData = rideDoc.data() as Ride;
-
-      if (rideData.driverId !== driverId) {
-        return {
-          success: false,
-          error: 'You can only cancel your own rides',
-        };
-      }
-
-      // Update ride status to cancelled
-      await updateDoc(doc(db, 'rides', rideId), {
-        status: 'cancelled',
-      });
+      const docRef = await addDoc(collection(db, 'rides'), rideData);
 
       return {
         success: true,
+        rideId: docRef.id,
       };
     } catch (error) {
-      console.error('Error cancelling ride:', error);
+      console.error('Error creating ride:', error);
       return {
         success: false,
-        error: 'Failed to cancel ride',
+        error: 'Failed to create ride',
       };
     }
   },
 
   /**
-   * Delete a ride completely
+   * Update ride details
    */
-  async deleteRide(rideId: string, driverId: string): Promise<{
+  async updateRide(
+    rideId: string,
+    updates: Partial<Ride>
+  ): Promise<{
     success: boolean;
     error?: string;
   }> {
     try {
-      // Verify the ride belongs to this driver
-      const rideDoc = await getDoc(doc(db, 'rides', rideId));
+      await updateDoc(doc(db, 'rides', rideId), updates as any);
 
-      if (!rideDoc.exists()) {
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error updating ride:', error);
+      return {
+        success: false,
+        error: 'Failed to update ride',
+      };
+    }
+  },
+
+  /**
+   * Delete a ride
+   */
+  async deleteRide(
+    rideId: string,
+    driverId: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Verify ownership
+      const rideResult = await this.getRideById(rideId);
+      if (!rideResult.success || !rideResult.ride) {
         return {
           success: false,
           error: 'Ride not found',
         };
       }
 
-      const rideData = rideDoc.data() as Ride;
-
-      if (rideData.driverId !== driverId) {
+      if (rideResult.ride.driverId !== driverId) {
         return {
           success: false,
           error: 'You can only delete your own rides',
         };
       }
 
-      // Delete the ride
       await deleteDoc(doc(db, 'rides', rideId));
 
       return {
@@ -354,47 +279,44 @@ export const rideService = {
   },
 
   /**
-   * Update ride details
+   * Cancel a ride
    */
-  async updateRide(
+  async cancelRide(
     rideId: string,
-    driverId: string,
-    updates: Partial<Pick<Ride, 'time' | 'availableSeats' | 'price' | 'notes'>>
+    driverId: string
   ): Promise<{
     success: boolean;
     error?: string;
   }> {
     try {
       // Verify ownership
-      const rideDoc = await getDoc(doc(db, 'rides', rideId));
-
-      if (!rideDoc.exists()) {
+      const rideResult = await this.getRideById(rideId);
+      if (!rideResult.success || !rideResult.ride) {
         return {
           success: false,
           error: 'Ride not found',
         };
       }
 
-      const rideData = rideDoc.data() as Ride;
-
-      if (rideData.driverId !== driverId) {
+      if (rideResult.ride.driverId !== driverId) {
         return {
           success: false,
-          error: 'You can only update your own rides',
+          error: 'You can only cancel your own rides',
         };
       }
 
-      // Update the ride
-      await updateDoc(doc(db, 'rides', rideId), updates);
+      await updateDoc(doc(db, 'rides', rideId), {
+        status: 'cancelled',
+      });
 
       return {
         success: true,
       };
     } catch (error) {
-      console.error('Error updating ride:', error);
+      console.error('Error cancelling ride:', error);
       return {
         success: false,
-        error: 'Failed to update ride',
+        error: 'Failed to cancel ride',
       };
     }
   },

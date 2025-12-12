@@ -4,195 +4,291 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   FlatList,
+  ActivityIndicator,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { rideService, Ride } from '../../src/services/ride.service';
-import { useToast } from '../../src/context/ToastContext';
+import { matchingService, RideMatch } from '../../src/services/matching.service';
 
-export default function SearchDriversScreen({ navigation }: any) {
+export default function SearchDriversScreen({ route, navigation }: any) {
   const { user } = useAuth();
-  const { showToast } = useToast();
-  const [rides, setRides] = useState<Ride[]>([]);
+  const { pickup, dropoff, date, time } = route.params || {};
+  
+  const [rides, setRides] = useState<RideMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sortBy, setSortBy] = useState<'match' | 'price' | 'time'>('match');
 
-  const loadRides = async () => {
+  useEffect(() => {
+    loadAvailableRides();
+  }, [sortBy]);
+
+  const loadAvailableRides = async () => {
     try {
-      const result = await rideService.getAvailableRides();
+      setLoading(true);
+
+      // Get all active rides
+      const result = await rideService.getActiveRides();
 
       if (result.success && result.rides) {
-        // ✅ Filter rides with valid coordinates
-        const validRides = result.rides.filter(ride => 
-          ride.pickupLat && 
-          ride.pickupLng && 
-          ride.dropoffLat && 
-          ride.dropoffLng &&
-          ride.pickupLat !== 0 &&
-          ride.pickupLng !== 0
+        // Filter out rides from the current user
+        const availableRides = result.rides.filter(
+          (ride) => ride.driverId !== user?.uid
         );
 
-        setRides(validRides);
-        
-        if (validRides.length === 0) {
-          showToast('No rides available at the moment', 'info', 2000);
-        }
-      } else {
-        showToast(result.error || 'Failed to load rides', 'error');
+        // Apply intelligent matching
+        const matchedRides = matchingService.getRecommendedRides(
+          availableRides,
+          { latitude: pickup.latitude, longitude: pickup.longitude },
+          { latitude: dropoff.latitude, longitude: dropoff.longitude },
+          date,
+          time,
+          {
+            maxPickupDistance: 5, // 5km
+            maxDropoffDistance: 5, // 5km
+            maxTimeDifference: 90, // 90 minutes
+            minMatchScore: 30, // Show rides with at least 30% match
+          }
+        );
+
+        // Apply sorting
+        const sortedRides = sortRides(matchedRides, sortBy);
+        setRides(sortedRides);
       }
     } catch (error) {
-      showToast('An unexpected error occurred', 'error');
-      console.error('Load rides error:', error);
+      console.error('Error loading rides:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    loadRides();
-  }, []);
+  const sortRides = (ridesArray: RideMatch[], sortType: string): RideMatch[] => {
+    const sorted = [...ridesArray];
+    
+    switch (sortType) {
+      case 'match':
+        return sorted.sort((a, b) => b.matchScore.totalScore - a.matchScore.totalScore);
+      case 'price':
+        return sorted.sort((a, b) => a.price - b.price);
+      case 'time':
+        return sorted.sort((a, b) => 
+          a.matchScore.timeDifference - b.matchScore.timeDifference
+        );
+      default:
+        return sorted;
+    }
+  };
 
   const handleRefresh = () => {
     setRefreshing(true);
-    loadRides();
+    loadAvailableRides();
   };
 
-  const handleRidePress = (ride: Ride) => {
-    // ✅ Log coordinates for debugging
-    console.log('Navigating to ride:', {
-      from: ride.from,
-      to: ride.to,
-      pickupLat: ride.pickupLat,
-      pickupLng: ride.pickupLng,
-      dropoffLat: ride.dropoffLat,
-      dropoffLng: ride.dropoffLng,
-    });
-
-    // ✅ Pass complete ride object with coordinates
-    navigation.navigate('DriverDetails', { ride });
+  const renderMatchBadge = (ride: RideMatch) => {
+    const { label, color, icon } = matchingService.getMatchQuality(ride.matchPercentage);
+    
+    return (
+      <View style={[styles.matchBadge, { backgroundColor: color + '20' }]}>
+        <Text style={styles.matchIcon}>{icon}</Text>
+        <Text style={[styles.matchText, { color }]}>
+          {ride.matchPercentage}% Match
+        </Text>
+      </View>
+    );
   };
 
-  // ✅ Calculate distance between two points
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+  const renderMatchDetails = (ride: RideMatch) => {
+    const explanations = matchingService.getMatchExplanation(ride.matchScore);
+    
+    return (
+      <View style={styles.matchDetails}>
+        {explanations.slice(0, 2).map((explanation, index) => (
+          <Text key={index} style={styles.matchDetailText}>
+            {explanation}
+          </Text>
+        ))}
+      </View>
+    );
   };
 
-  const renderRide = ({ item }: { item: Ride }) => {
-    // Get driver's initials for avatar
-    const initials = item.driverName
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase();
-
-    // ✅ Calculate distance for display
-    const distance = calculateDistance(
-      item.pickupLat,
-      item.pickupLng,
-      item.dropoffLat,
-      item.dropoffLng
-    ).toFixed(1);
+  const renderRideCard = ({ item }: { item: RideMatch }) => {
+    const { matchScore } = item;
 
     return (
       <TouchableOpacity
-        style={styles.driverCard}
-        onPress={() => handleRidePress(item)}
+        style={styles.rideCard}
+        onPress={() => navigation.navigate('DriverDetails', { ride: item })}
       >
-        <View style={styles.driverAvatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        {/* Match Badge */}
+        {renderMatchBadge(item)}
 
-        <View style={styles.driverInfo}>
-          <Text style={styles.driverName}>{item.driverName}</Text>
-          <View style={styles.routeContainer}>
-            <Text style={styles.routeText}>
-              📍 {item.from}
-            </Text>
-            <Text style={styles.routeArrow}>→</Text>
-            <Text style={styles.routeText}>
-              🎯 {item.to}
+        {/* Driver Info */}
+        <View style={styles.driverSection}>
+          <View style={styles.driverAvatar}>
+            <Text style={styles.driverInitial}>
+              {item.driverName.charAt(0).toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.distance}>
-            ~{distance} km • {item.date} at {item.time}
-          </Text>
-          <View style={styles.ratingRow}>
-            <Text style={styles.rating}>⭐ {item.driverRating || 5.0}</Text>
-            <Text style={styles.seats}>
-              • {item.availableSeats} {item.availableSeats === 1 ? 'seat' : 'seats'}
-            </Text>
+          <View style={styles.driverInfo}>
+            <Text style={styles.driverName}>{item.driverName}</Text>
+            <View style={styles.ratingRow}>
+              <Text style={styles.ratingText}>⭐ 4.8</Text>
+              <Text style={styles.seatsText}>
+                💺 {item.availableSeats}/{item.totalSeats} seats
+              </Text>
+            </View>
+          </View>
+          <View style={styles.priceContainer}>
+            <Text style={styles.priceAmount}>{item.price}</Text>
+            <Text style={styles.priceCurrency}>BHD</Text>
           </View>
         </View>
 
-        <View style={styles.driverMeta}>
-          <Text style={styles.price}>{item.price} BHD</Text>
-          <TouchableOpacity 
-            style={styles.viewButton}
-            onPress={() => handleRidePress(item)}
-          >
-            <Text style={styles.viewButtonText}>View</Text>
-          </TouchableOpacity>
+        {/* Route */}
+        <View style={styles.routeSection}>
+          <View style={styles.routeItem}>
+            <View style={styles.routeDot} />
+            <View style={styles.routeInfo}>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeText}>{item.from}</Text>
+              <Text style={styles.distanceText}>
+                ~{matchingService.formatDistance(matchScore.pickupDistance)} away
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.routeLine} />
+          
+          <View style={styles.routeItem}>
+            <View style={[styles.routeDot, styles.routeDotEnd]} />
+            <View style={styles.routeInfo}>
+              <Text style={styles.routeLabel}>Dropoff</Text>
+              <Text style={styles.routeText}>{item.to}</Text>
+              <Text style={styles.distanceText}>
+                ~{matchingService.formatDistance(matchScore.dropoffDistance)} from destination
+              </Text>
+            </View>
+          </View>
         </View>
+
+        {/* Time Info */}
+        <View style={styles.timeSection}>
+          <View style={styles.timeItem}>
+            <Text style={styles.timeIcon}>📅</Text>
+            <Text style={styles.timeText}>{item.date}</Text>
+          </View>
+          <View style={styles.timeItem}>
+            <Text style={styles.timeIcon}>⏰</Text>
+            <Text style={styles.timeText}>{item.time}</Text>
+            {matchScore.timeDifference > 0 && (
+              <Text style={styles.timeDiffText}>
+                (±{matchingService.formatTimeDifference(matchScore.timeDifference)})
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Match Explanation */}
+        {renderMatchDetails(item)}
+
+        {/* View Details Button */}
+        <TouchableOpacity style={styles.viewButton}>
+          <Text style={styles.viewButtonText}>View Details & Book →</Text>
+        </TouchableOpacity>
       </TouchableOpacity>
+    );
+  };
+
+  const renderSortOptions = () => {
+    return (
+      <View style={styles.sortContainer}>
+        <Text style={styles.sortLabel}>Sort by:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'match' && styles.sortButtonActive]}
+            onPress={() => setSortBy('match')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'match' && styles.sortButtonTextActive]}>
+              🎯 Best Match
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'price' && styles.sortButtonActive]}
+            onPress={() => setSortBy('price')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'price' && styles.sortButtonTextActive]}>
+              💰 Price
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'time' && styles.sortButtonActive]}
+            onPress={() => setSortBy('time')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'time' && styles.sortButtonTextActive]}>
+              ⏰ Time
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderHeader = () => {
+    return (
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Available Rides</Text>
+        <Text style={styles.headerSubtitle}>
+          Found {rides.length} ride{rides.length !== 1 ? 's' : ''} matching your route
+        </Text>
+      </View>
     );
   };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#7F7CAF" />
-        <Text style={styles.loadingText}>Loading rides...</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#7F7CAF" />
+          <Text style={styles.loadingText}>Finding best rides for you...</Text>
+        </View>
+      </SafeAreaView>
     );
-  } 
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Available Rides</Text>
-        <TouchableOpacity 
-          style={styles.refreshButton}
-          onPress={handleRefresh}
-        >
-          <Text style={styles.refreshIcon}>🔄</Text>
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={rides}
-        renderItem={renderRide}
-        keyExtractor={(item) => item.id!}
-        contentContainerStyle={styles.list}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
+        renderItem={renderRideCard}
+        keyExtractor={(item) => item.id || ''}
+        ListHeaderComponent={
+          <>
+            {renderHeader()}
+            {renderSortOptions()}
+          </>
+        }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🚗</Text>
-            <Text style={styles.emptyText}>No rides available</Text>
-            <Text style={styles.emptySubtext}>
-              Check back later or post your own ride!
+            <Text style={styles.emptyTitle}>No rides found</Text>
+            <Text style={styles.emptyText}>
+              Try adjusting your search or check back later
             </Text>
           </View>
         }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#7F7CAF']}
+          />
+        }
+        contentContainerStyle={styles.listContent}
       />
     </SafeAreaView>
   );
@@ -203,81 +299,106 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  center: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  listContent: {
     padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingBottom: 32,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-    color: '#7F7CAF',
+  header: {
+    marginBottom: 16,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#1F2937',
+    marginBottom: 4,
   },
-  refreshButton: {
-    width: 40,
-    height: 40,
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  sortContainer: {
+    marginBottom: 16,
+  },
+  sortLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  sortButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  refreshIcon: {
-    fontSize: 20,
-  },
-  list: {
-    padding: 16,
-  },
-  driverCard: {
-    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    marginRight: 8,
+  },
+  sortButtonActive: {
+    backgroundColor: '#7F7CAF',
+    borderColor: '#7F7CAF',
+  },
+  sortButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  sortButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  rideCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  matchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  matchIcon: {
+    fontSize: 16,
+    marginRight: 4,
+  },
+  matchText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  driverSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   driverAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#7F7CAF',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
-  avatarText: {
+  driverInitial: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
@@ -286,84 +407,141 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   driverName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 6,
-  },
-  routeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  routeText: {
-    fontSize: 13,
-    color: '#374151',
-  },
-  routeArrow: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginHorizontal: 4,
-  },
-  distance: {
-    fontSize: 12,
-    color: '#6B7280',
     marginBottom: 4,
   },
   ratingRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 12,
   },
-  rating: {
+  ratingText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  seats: {
-    fontSize: 12,
     color: '#6B7280',
-    marginLeft: 4,
   },
-  driverMeta: {
+  seatsText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  priceContainer: {
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
   },
-  price: {
-    fontSize: 18,
+  priceAmount: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#7F7CAF',
-    marginBottom: 8,
+  },
+  priceCurrency: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  routeSection: {
+    marginBottom: 16,
+  },
+  routeItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  routeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
+    marginRight: 12,
+    marginTop: 4,
+  },
+  routeDotEnd: {
+    backgroundColor: '#EF4444',
+  },
+  routeLine: {
+    width: 2,
+    height: 20,
+    backgroundColor: '#E5E7EB',
+    marginLeft: 5,
+    marginVertical: 4,
+  },
+  routeInfo: {
+    flex: 1,
+  },
+  routeLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 2,
+  },
+  routeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  distanceText: {
+    fontSize: 12,
+    color: '#7F7CAF',
+    fontStyle: 'italic',
+  },
+  timeSection: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  timeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  timeText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 4,
+  },
+  timeDiffText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  matchDetails: {
+    marginBottom: 12,
+  },
+  matchDetailText: {
+    fontSize: 13,
+    color: '#10B981',
+    marginBottom: 4,
   },
   viewButton: {
     backgroundColor: '#7F7CAF',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
   },
   viewButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
   },
   emptyIcon: {
-    fontSize: 60,
+    fontSize: 64,
     marginBottom: 16,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
     marginBottom: 8,
   },
-  emptySubtext: {
+  emptyText: {
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
+    paddingHorizontal: 40,
   },
 });
