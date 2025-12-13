@@ -304,7 +304,7 @@ export default function DriverMainScreen({ navigation }: any) {
 
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Ratings')}
+            onPress={() => navigation.navigate('RatePassengers')}
           >
             <Text style={styles.actionIcon}>⭐</Text>
             <View style={styles.actionContent}>

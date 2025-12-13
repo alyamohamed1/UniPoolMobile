@@ -37,12 +37,14 @@ export default function RatePassengersScreen({ navigation, route }: any) {
 
     try {
       setLoading(true);
+      
+      // Use the existing getBookingById method
       const result = await bookingService.getBookingById(bookingId);
       
       if (result.success && result.booking) {
         setBooking(result.booking);
       } else {
-        showToast('Failed to load booking details', 'error');
+        showToast(result.error || 'Failed to load booking details', 'error');
         navigation.goBack();
       }
     } catch (error) {
@@ -60,13 +62,17 @@ export default function RatePassengersScreen({ navigation, route }: any) {
       return;
     }
 
+    if (!booking) {
+      showToast('Missing booking data', 'error');
+      return;
+    }
+
     try {
       setSubmitting(true);
       
-      // Submit rating to your rating service
-      // You'll need to implement this in your services
+      // Use the existing rateRider method from booking service
       const result = await bookingService.rateRider(bookingId, {
-        rating,
+        rating: rating,
         comment: comment.trim(),
         riderId: booking.riderId,
       });
@@ -77,9 +83,10 @@ export default function RatePassengersScreen({ navigation, route }: any) {
       } else {
         showToast(result.error || 'Failed to submit rating', 'error');
       }
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Error submitting rating:', error);
-      showToast('An error occurred', 'error');
+      showToast(error.message || 'Failed to submit rating', 'error');
     } finally {
       setSubmitting(false);
     }
