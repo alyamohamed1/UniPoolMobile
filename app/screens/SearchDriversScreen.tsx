@@ -16,7 +16,8 @@ import { rideService, Ride } from '../../src/services/ride.service';
 import { matchingService, RideMatch } from '../../src/services/matching.service';
 
 export default function SearchDriversScreen({ route, navigation }: any) {
-  // ✅ FIXED: Better parameter extraction with defaults
+  // ✅ FIXED: Better parameter extraction with validation
+  const params = route.params || {};
   const { 
     pickup, 
     dropoff, 
@@ -24,7 +25,7 @@ export default function SearchDriversScreen({ route, navigation }: any) {
     dropoffAddress = '',
     date = new Date().toISOString().split('T')[0], 
     time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-  } = route.params || {};
+  } = params;
   
   const { user } = useAuth();
   const [rides, setRides] = useState<RideMatch[]>([]);
@@ -32,20 +33,22 @@ export default function SearchDriversScreen({ route, navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'match' | 'price' | 'time'>('match');
 
-  // ✅ FIXED: Comprehensive validation on mount
   useEffect(() => {
-    validateParams();
+    const isValid = validateParams();
+    if (isValid) {
+      loadAvailableRides();
+    }
   }, []);
 
   useEffect(() => {
-    if (pickup && dropoff && pickup.latitude && dropoff.latitude) {
+    if (pickup?.latitude && dropoff?.latitude) {
       loadAvailableRides();
     }
-  }, [sortBy, pickup, dropoff]);
+  }, [sortBy]);
 
   const validateParams = () => {
-    // Check if params exist
-    if (!pickup || !dropoff) {
+    if (!pickup || !dropoff || !pickup.latitude || !pickup.longitude || 
+        !dropoff.latitude || !dropoff.longitude) {
       Alert.alert(
         'Missing Location Data',
         'Please select pickup and destination locations first',
@@ -54,24 +57,13 @@ export default function SearchDriversScreen({ route, navigation }: any) {
       return false;
     }
 
-    // Check if coordinates are valid
-    if (!pickup.latitude || !pickup.longitude || !dropoff.latitude || !dropoff.longitude) {
-      Alert.alert(
-        'Invalid Location Data',
-        'Location coordinates are missing. Please select locations again.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return false;
-    }
-
-    // Validate coordinate ranges (basic validation)
     if (pickup.latitude < -90 || pickup.latitude > 90 || 
         pickup.longitude < -180 || pickup.longitude > 180 ||
         dropoff.latitude < -90 || dropoff.latitude > 90 ||
         dropoff.longitude < -180 || dropoff.longitude > 180) {
       Alert.alert(
         'Invalid Coordinates',
-        'The location coordinates are out of valid range. Please try again.',
+        'The location coordinates are out of valid range.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
       return false;
@@ -81,21 +73,15 @@ export default function SearchDriversScreen({ route, navigation }: any) {
   };
 
   const loadAvailableRides = async () => {
-    // Safety check before loading
     if (!pickup?.latitude || !dropoff?.latitude) {
-      console.error('Missing location data in loadAvailableRides');
       setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
-
-      // Get all active rides
       const result = await rideService.getActiveRides();
 
       if (result.success && result.rides) {
-        // Filter out rides from the current user
         const availableRides = result.rides.filter(
           (ride) => ride.driverId !== user?.uid
         );
@@ -106,7 +92,6 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           return;
         }
 
-        // Apply intelligent matching
         const matchedRides = matchingService.getRecommendedRides(
           availableRides,
           { latitude: pickup.latitude, longitude: pickup.longitude },
@@ -114,14 +99,13 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           date,
           time,
           {
-            maxPickupDistance: 5, // 5km
-            maxDropoffDistance: 5, // 5km
-            maxTimeDifference: 90, // 90 minutes
-            minMatchScore: 30, // Show rides with at least 30% match
+            maxPickupDistance: 5,
+            maxDropoffDistance: 5,
+            maxTimeDifference: 90,
+            minMatchScore: 30,
           }
         );
 
-        // Apply sorting
         const sortedRides = sortRides(matchedRides, sortBy);
         setRides(sortedRides);
       } else {
@@ -159,6 +143,11 @@ export default function SearchDriversScreen({ route, navigation }: any) {
     loadAvailableRides();
   };
 
+  // ✅ FIXED: Separate handler prevents nested TouchableOpacity issues
+  const handleViewDetails = (ride: RideMatch) => {
+    navigation.navigate('DriverDetails', { ride });
+  };
+
   const renderMatchBadge = (ride: RideMatch) => {
     const { label, color, icon } = matchingService.getMatchQuality(ride.matchPercentage);
     
@@ -190,14 +179,9 @@ export default function SearchDriversScreen({ route, navigation }: any) {
     const { matchScore } = item;
 
     return (
-      <TouchableOpacity
-        style={styles.rideCard}
-        onPress={() => navigation.navigate('DriverDetails', { ride: item })}
-      >
-        {/* Match Badge */}
+      <View style={styles.rideCard}>
         {renderMatchBadge(item)}
 
-        {/* Driver Info */}
         <View style={styles.driverSection}>
           <View style={styles.driverAvatar}>
             <Text style={styles.driverInitial}>
@@ -219,7 +203,6 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Route */}
         <View style={styles.routeSection}>
           <View style={styles.routeItem}>
             <View style={styles.routeDot} />
@@ -246,7 +229,6 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Time Info */}
         <View style={styles.timeSection}>
           <View style={styles.timeItem}>
             <Text style={styles.timeIcon}>📅</Text>
@@ -263,14 +245,17 @@ export default function SearchDriversScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Match Explanation */}
         {renderMatchDetails(item)}
 
-        {/* View Details Button */}
-        <TouchableOpacity style={styles.viewButton}>
+        {/* ✅ FIXED: Proper button with explicit onPress - no nested TouchableOpacity */}
+        <TouchableOpacity 
+          style={styles.viewButton}
+          onPress={() => handleViewDetails(item)}
+          activeOpacity={0.7}
+        >
           <Text style={styles.viewButtonText}>View Details & Book →</Text>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -327,7 +312,6 @@ export default function SearchDriversScreen({ route, navigation }: any) {
     );
   };
 
-  // ✅ FIXED: Better loading state
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container}>
@@ -343,7 +327,6 @@ export default function SearchDriversScreen({ route, navigation }: any) {
     );
   }
 
-  // ✅ FIXED: Check if required params are missing after initial load
   if (!pickup || !dropoff || !pickup.latitude || !dropoff.latitude) {
     return (
       <SafeAreaView style={styles.container}>

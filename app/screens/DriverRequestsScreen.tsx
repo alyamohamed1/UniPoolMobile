@@ -155,12 +155,13 @@ export default function DriverRequestsScreen({ navigation }: any) {
     );
   };
 
+  // ✅ FIXED: Navigate to rating screen after completing booking
   const handleCompleteBooking = async (bookingId: string) => {
     if (!user) return;
 
     Alert.alert(
       'Mark as Completed',
-      'Has this ride been completed? Both you and the rider will be able to leave ratings.',
+      'Has this ride been completed? You\'ll be able to rate the rider.',
       [
         {
           text: 'Cancel',
@@ -174,8 +175,13 @@ export default function DriverRequestsScreen({ navigation }: any) {
               const result = await bookingService.completeBooking(bookingId, user.uid);
 
               if (result.success) {
-                showToast('Ride marked as completed!', 'success');
+                showToast('Ride completed!', 'success');
                 loadBookings();
+                
+                // ✅ Navigate to rating screen after a brief delay
+                setTimeout(() => {
+                  navigation.navigate('RatePassengers', { bookingId });
+                }, 1000);
               } else {
                 showToast(result.error || 'Failed to complete booking', 'error');
               }
@@ -200,6 +206,8 @@ export default function DriverRequestsScreen({ navigation }: any) {
         return '#EF4444';
       case 'cancelled':
         return '#6B7280';
+      case 'completed':
+        return '#3B82F6';
       default:
         return '#9CA3AF';
     }
@@ -215,6 +223,8 @@ export default function DriverRequestsScreen({ navigation }: any) {
         return '#FEE2E2';
       case 'cancelled':
         return '#F3F4F6';
+      case 'completed':
+        return '#DBEAFE';
       default:
         return '#F9FAFB';
     }
@@ -340,15 +350,24 @@ export default function DriverRequestsScreen({ navigation }: any) {
             <Text style={styles.rejectedText}>You rejected this request</Text>
           </View>
         )}
+
+        {/* ✅ ADDED: Show rating button for completed bookings */}
+        {item.status === 'completed' && (
+          <TouchableOpacity
+            style={styles.rateButton}
+            onPress={() => navigation.navigate('RatePassengers', { bookingId: item.id })}
+          >
+            <Text style={styles.rateButtonText}>⭐ Rate Rider</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
 
-  // Filter bookings based on selected filter
   const filteredBookings = bookings.filter(booking => {
     if (filter === 'pending') return booking.status === 'pending';
     if (filter === 'confirmed') return booking.status === 'confirmed';
-    return true; // 'all'
+    return true;
   });
 
   if (loading) {
@@ -373,7 +392,6 @@ export default function DriverRequestsScreen({ navigation }: any) {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         <TouchableOpacity
           style={[styles.filterTab, filter === 'pending' && styles.filterTabActive]}
@@ -673,6 +691,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#991B1B',
     textAlign: 'center',
+  },
+  rateButton: {
+    backgroundColor: '#7F7CAF',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  rateButtonText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   emptyState: {
     alignItems: 'center',
