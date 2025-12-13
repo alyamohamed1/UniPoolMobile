@@ -38,16 +38,18 @@ export interface Booking {
   bookedAt: Date | Timestamp;
   respondedAt?: Date | Timestamp;
   completedAt?: Date | Timestamp;
-  // Rating fields
+  
+  // Existing rider rating fields (driver rates rider)
   riderRating?: number;
   riderComment?: string;
   ratedAt?: Date | Timestamp;
+  
+  // ADD THESE: Driver rating fields (rider rates driver)
+  driverRating?: number;
+  driverComment?: string;
 }
 
 export const bookingService = {
-  /**
-   * ✅ FIXED: Create a new booking request (Rider books a ride - seats NOT decremented until confirmed)
-   */
   async createBooking(
     rideId: string,
     riderId: string,
