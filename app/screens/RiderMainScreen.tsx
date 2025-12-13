@@ -499,13 +499,14 @@ export default function RiderMainScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Location Selection Modal */}
-      <Modal
-        visible={showLocationModal}
-        animationType="slide"
-        transparent={false}
-      >
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+<Modal
+  visible={showLocationModal}
+  animationType="slide"
+  transparent={false}
+  presentationStyle="fullScreen"
+>
+  <SafeAreaView style={styles.modalContainer} edges={['top', 'left', 'right']}>
+
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderContent}>
               <Text style={styles.modalTitle}>Select Pickup Location</Text>
@@ -588,12 +589,15 @@ export default function RiderMainScreen({ navigation }: any) {
       </Modal>
 
       {/* Destination Selection Modal */}
-      <Modal
-        visible={showDestinationModal}
-        animationType="slide"
-        transparent={false}
-      >
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+      
+<Modal
+  visible={showDestinationModal}
+  animationType="slide"
+  transparent={false}
+  presentationStyle="fullScreen"
+>
+  <SafeAreaView style={styles.modalContainer} edges={['top', 'left', 'right']}>
+
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderContent}>
               <Text style={styles.modalTitle}>Select Destination</Text>
