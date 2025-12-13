@@ -176,7 +176,7 @@ export default function RidesScreen({ navigation }: any) {
               bookingId: item.id,
             })}
           >
-            <Text style={styles.rateButtonText}>Rate</Text>
+            <Text style={styles.rateButtonText}>⭐ Rate Driver</Text>
           </TouchableOpacity>
         )}
 
@@ -442,13 +442,13 @@ const styles = StyleSheet.create({
   rateButton: {
     backgroundColor: '#7F7CAF',
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 12,
     marginTop: 12,
     alignItems: 'center',
   },
   rateButtonText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   ratedBadge: {

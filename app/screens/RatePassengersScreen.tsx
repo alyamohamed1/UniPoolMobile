@@ -103,30 +103,6 @@ export default function RatePassengersScreen({ navigation, route }: any) {
       // Create rating document in ratings collection
       await addDoc(collection(db, 'ratings'), ratingData);
 
-      // Try to update rider's average rating
-      try {
-        const riderDoc = doc(db, 'users', booking.riderId);
-        const riderSnapshot = await getDoc(riderDoc);
-        
-        if (riderSnapshot.exists()) {
-          const riderData = riderSnapshot.data();
-          const currentRating = riderData.avgRating || 0;
-          const currentRatingCount = riderData.ratingCount || 0;
-          
-          const newRatingCount = currentRatingCount + 1;
-          const newAvgRating = ((currentRating * currentRatingCount) + rating) / newRatingCount;
-          
-          await updateDoc(riderDoc, {
-            avgRating: newAvgRating,
-            ratingCount: newRatingCount,
-            lastRatedAt: Timestamp.now(),
-          });
-        }
-      } catch (userError) {
-        console.warn('Could not update rider average rating:', userError);
-        // Continue anyway - the rating was saved successfully
-      }
-
       showToast('Rating submitted successfully!', 'success');
       setTimeout(() => navigation.goBack(), 1000);
       

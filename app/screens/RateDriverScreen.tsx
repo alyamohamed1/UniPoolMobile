@@ -102,30 +102,6 @@ export default function RateDriverScreen({ navigation, route }: any) {
       // Create rating document in ratings collection
       await addDoc(collection(db, 'ratings'), ratingData);
 
-      // Try to update driver's average rating
-      try {
-        const driverDoc = doc(db, 'users', booking.driverId);
-        const driverSnapshot = await getDoc(driverDoc);
-        
-        if (driverSnapshot.exists()) {
-          const driverData = driverSnapshot.data();
-          const currentRating = driverData.avgRating || 0;
-          const currentRatingCount = driverData.ratingCount || 0;
-          
-          const newRatingCount = currentRatingCount + 1;
-          const newAvgRating = ((currentRating * currentRatingCount) + rating) / newRatingCount;
-          
-          await updateDoc(driverDoc, {
-            avgRating: newAvgRating,
-            ratingCount: newRatingCount,
-            lastRatedAt: Timestamp.now(),
-          });
-        }
-      } catch (userError) {
-        console.warn('Could not update driver average rating:', userError);
-        // Continue anyway - the rating was saved successfully
-      }
-
       showToast('Rating submitted successfully!', 'success');
       setTimeout(() => navigation.goBack(), 1000);
       
