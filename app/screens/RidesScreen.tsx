@@ -119,7 +119,9 @@ export default function RidesScreen({ navigation }: any) {
   };
 
   const renderRideCard = ({ item }: { item: Booking }) => {
-    const canRate = item.status === 'completed' && !item.ratedAt;
+    // For now, always show rate button for completed rides
+    // The ratings collection will prevent duplicate ratings
+    const canRate = item.status === 'completed';
 
     return (
       <View style={styles.rideCard}>

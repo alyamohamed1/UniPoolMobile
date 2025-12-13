@@ -12,10 +12,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../../src/context/ToastContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { bookingService } from '../../src/services/booking.service';
+import { doc, updateDoc, Timestamp, collection, addDoc, getDoc } from 'firebase/firestore';
+import { db } from '../../src/config/firebase';
 
 export default function RatePassengersScreen({ navigation, route }: any) {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const { bookingId } = route.params || {};
   
   const [booking, setBooking] = useState<any>(null);
@@ -62,31 +66,79 @@ export default function RatePassengersScreen({ navigation, route }: any) {
       return;
     }
 
-    if (!booking) {
-      showToast('Missing booking data', 'error');
+    if (!booking || !user) {
+      showToast('Missing booking or user data', 'error');
       return;
     }
 
     try {
       setSubmitting(true);
       
-      // Use the existing rateRider method from booking service
-      const result = await bookingService.rateRider(bookingId, {
+      // Get driver name
+      let raterName = 'Driver';
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          raterName = userDoc.data().name || userDoc.data().displayName || 'Driver';
+        }
+      } catch (e) {
+        console.log('Could not fetch user name, using default');
+      }
+      
+      // Prepare rating data according to Firebase security rules
+      const ratingData = {
+        bookingId: bookingId,
+        rideId: booking.rideId,
+        raterId: user.uid, // Current driver
+        raterName: raterName,
+        raterRole: 'driver',
+        rateeId: booking.riderId, // Rider being rated
+        rateeName: booking.riderName,
+        rateeRole: 'rider',
         rating: rating,
         comment: comment.trim(),
-        riderId: booking.riderId,
-      });
+        createdAt: new Date().toISOString(),
+      };
 
-      if (result.success) {
-        showToast('Rating submitted successfully!', 'success');
-        setTimeout(() => navigation.goBack(), 1000);
-      } else {
-        showToast(result.error || 'Failed to submit rating', 'error');
+      // Create rating document in ratings collection
+      await addDoc(collection(db, 'ratings'), ratingData);
+
+      // Try to update rider's average rating
+      try {
+        const riderDoc = doc(db, 'users', booking.riderId);
+        const riderSnapshot = await getDoc(riderDoc);
+        
+        if (riderSnapshot.exists()) {
+          const riderData = riderSnapshot.data();
+          const currentRating = riderData.avgRating || 0;
+          const currentRatingCount = riderData.ratingCount || 0;
+          
+          const newRatingCount = currentRatingCount + 1;
+          const newAvgRating = ((currentRating * currentRatingCount) + rating) / newRatingCount;
+          
+          await updateDoc(riderDoc, {
+            avgRating: newAvgRating,
+            ratingCount: newRatingCount,
+            lastRatedAt: Timestamp.now(),
+          });
+        }
+      } catch (userError) {
+        console.warn('Could not update rider average rating:', userError);
+        // Continue anyway - the rating was saved successfully
       }
+
+      showToast('Rating submitted successfully!', 'success');
+      setTimeout(() => navigation.goBack(), 1000);
       
     } catch (error: any) {
       console.error('Error submitting rating:', error);
-      showToast(error.message || 'Failed to submit rating', 'error');
+      
+      // Check if it's a duplicate rating error
+      if (error.message?.includes('permission') || error.code === 'permission-denied') {
+        showToast('You may have already rated this rider', 'warning');
+      } else {
+        showToast(error.message || 'Failed to submit rating', 'error');
+      }
     } finally {
       setSubmitting(false);
     }
