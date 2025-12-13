@@ -38,6 +38,10 @@ export interface Booking {
   bookedAt: Date | Timestamp;
   respondedAt?: Date | Timestamp;
   completedAt?: Date | Timestamp;
+  // Rating fields
+  riderRating?: number;
+  riderComment?: string;
+  ratedAt?: Date | Timestamp;
 }
 
 export const bookingService = {
@@ -313,6 +317,8 @@ export const bookingService = {
           ...data,
           bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
           respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+          completedAt: data.completedAt?.toDate?.() || data.completedAt,
+          ratedAt: data.ratedAt?.toDate?.() || data.ratedAt,
         } as Booking;
       });
 
@@ -354,6 +360,8 @@ export const bookingService = {
           ...data,
           bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
           respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+          completedAt: data.completedAt?.toDate?.() || data.completedAt,
+          ratedAt: data.ratedAt?.toDate?.() || data.ratedAt,
         } as Booking;
       });
 
@@ -436,6 +444,8 @@ export const bookingService = {
           ...data,
           bookedAt: data.bookedAt?.toDate?.() || data.bookedAt || new Date(),
           respondedAt: data.respondedAt?.toDate?.() || data.respondedAt,
+          completedAt: data.completedAt?.toDate?.() || data.completedAt,
+          ratedAt: data.ratedAt?.toDate?.() || data.ratedAt,
         } as Booking;
       });
 
@@ -530,12 +540,12 @@ export const bookingService = {
   },
 
   /**
-   * Get booking by ID
+   * Get booking details by ID
    */
   async getBookingById(bookingId: string): Promise<{
     success: boolean;
-    error?: string;
     booking?: Booking;
+    error?: string;
   }> {
     try {
       const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
@@ -552,6 +562,8 @@ export const bookingService = {
         ...bookingDoc.data(),
         bookedAt: bookingDoc.data().bookedAt?.toDate() || new Date(),
         respondedAt: bookingDoc.data().respondedAt?.toDate(),
+        completedAt: bookingDoc.data().completedAt?.toDate(),
+        ratedAt: bookingDoc.data().ratedAt?.toDate(),
       } as Booking;
 
       return {
@@ -696,6 +708,105 @@ export const bookingService = {
       return {
         success: false,
         error: 'Failed to complete ride',
+      };
+    }
+  },
+
+  /**
+   * Submit rider rating for a completed booking
+   */
+  async rateRider(
+    bookingId: string,
+    ratingData: { rating: number; comment: string; riderId: string }
+  ): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      // Get booking details
+      const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
+
+      if (!bookingDoc.exists()) {
+        return {
+          success: false,
+          error: 'Booking not found',
+        };
+      }
+
+      const booking = bookingDoc.data() as Booking;
+
+      // Verify the rider ID matches
+      if (booking.riderId !== ratingData.riderId) {
+        return {
+          success: false,
+          error: 'Rider ID does not match booking',
+        };
+      }
+
+      // Check if booking is completed (can only rate completed bookings)
+      if (booking.status !== 'completed') {
+        return {
+          success: false,
+          error: 'Can only rate riders for completed bookings',
+        };
+      }
+
+      // Check if rating is valid (1-5)
+      if (ratingData.rating < 1 || ratingData.rating > 5) {
+        return {
+          success: false,
+          error: 'Rating must be between 1 and 5',
+        };
+      }
+
+      // Check if rider has already been rated for this booking
+      if (booking.riderRating) {
+        return {
+          success: false,
+          error: 'Rider has already been rated for this booking',
+        };
+      }
+
+      // Update booking with rider rating and comment
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        riderRating: ratingData.rating,
+        riderComment: ratingData.comment,
+        ratedAt: Timestamp.now(),
+      });
+
+      // Update rider's average rating in users collection
+      try {
+        const userRef = doc(db, 'users', ratingData.riderId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const currentRating = userData.avgRating || 0;
+          const currentRatingCount = userData.ratingCount || 0;
+          
+          // Calculate new average rating
+          const newRatingCount = currentRatingCount + 1;
+          const newAvgRating = ((currentRating * currentRatingCount) + ratingData.rating) / newRatingCount;
+          
+          await updateDoc(userRef, {
+            avgRating: newAvgRating,
+            ratingCount: newRatingCount,
+            lastRatedAt: Timestamp.now(),
+          });
+        }
+      } catch (userError) {
+        console.warn('Could not update rider average rating:', userError);
+        // Continue anyway - the booking rating was saved successfully
+      }
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error rating rider:', error);
+      return {
+        success: false,
+        error: 'Failed to submit rating',
       };
     }
   },
