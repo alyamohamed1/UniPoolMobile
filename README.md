@@ -59,4 +59,36 @@ Unipool’s architecture is centered around **two primary user roles — Driver 
 
 ---
 
+### Design and Planning Artifacts
 
+The Unipool project followed an **agile approach** with clear documentation and iterative design improvements.
+
+**Artifacts include:**
+- User Stories for Drivers and Riders  
+- UML Diagrams (Use Case, Activity, Sequence, Class, and State)  
+- System Architecture Diagram  
+- Wireframes and UI Mockups in Figma  
+
+These deliverables guided the identification of system requirements, interactions, and early design structures.
+
+---
+
+### Development Approach
+
+The project was managed using **Agile methodologies**, emphasizing collaboration, iteration, and continuous improvement.
+
+**Key Practices:**
+- **Biweekly Standups:** Held every Sunday and Thursday at 12:40 PM.  
+- **Kanban Boards:** Used to track progress through Backlog → Selected → Analysis → Development → Testing → Done.  
+- **Version Control:** All work is tracked through the [GitHub repository](https://github.com/alyamohamed1/v0-unipool-mobile-app).  
+- **Collaborative Workflows:** Team members contribute commits and updates regularly to maintain visibility and version consistency.  
+
+Currently, the project has completed the **requirements analysis and initial system design** phase and is preparing to transition into **implementation**.
+
+---
+
+
+### Summary
+
+Unipool represents an early-stage design and planning effort for a student carpooling platform built with an agile mindset.  
+It combines functionality, usability, and sustainability goals into a single project that supports both community connection and environmental responsibility.
