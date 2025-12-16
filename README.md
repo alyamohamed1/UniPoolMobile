@@ -7,7 +7,15 @@ The app allows students to either **offer rides as drivers** or **book available
 Unipool focuses on creating a **safe**, **user-friendly**, and **socially connected** platform. It includes features such as driver and rider ratings, real-time ride tracking, in-app chat, and a rewards system that encourages active participation and trust among users.
 
 ---
+### Purpose and Goals
 
+The main goal of Unipool is to **reduce transportation costs and environmental impact** while **enhancing social interaction** among university students.
+
+By enabling shared rides, the app aims to:
+- Minimize the number of vehicles on campus.
+- Help students save money on daily commutes.
+- Foster a sense of community through shared travel.
+- Provide a reliable and transparent system for managing rides and ensuring user safety.
 
 
 ---
