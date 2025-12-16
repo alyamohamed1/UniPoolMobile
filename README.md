@@ -31,16 +31,7 @@ By enabling shared rides, the app aims to:
 - Earn ratings and feedback from riders.  
 - Access incentives and rewards for consistent performance.  
 
-#### For Riders
-- Find and book nearby available drivers.  
-- View driver ratings, car types, and details before booking.  
-- Chat directly with drivers to confirm pickup details.  
-- Split ride costs fairly with other passengers.  
-- Track the driver’s live location during the trip.  
-- Receive real-time ride notifications and alerts.  
-- Add trusted drivers or passengers to a friends list.  
-- Earn reward points for frequent app use.  
-- Provide feedback and rate drivers after each trip.  
+
 
 ---
 
