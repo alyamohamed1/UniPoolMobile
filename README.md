@@ -52,8 +52,8 @@ Unipool’s architecture is centered around **two primary user roles — Driver 
 - Notifications and live tracking  
 - Data synchronization across users  
 
-**Planned Technologies:**
-- **Frontend:** FlutterFlow (for rapid UI prototyping and cross-platform support)  
+**Technologies:**
+- **Frontend:** React Native (for rapid UI prototyping and cross-platform support)  
 - **Backend:** Firebase (for authentication, database, and real-time updates)  
 - **Design:** Figma (for wireframes, UI mockups, and page layouts)  
 
@@ -80,13 +80,37 @@ The project was managed using **Agile methodologies**, emphasizing collaboration
 **Key Practices:**
 - **Biweekly Standups:** Held every Sunday and Thursday at 12:40 PM.  
 - **Kanban Boards:** Used to track progress through Backlog → Selected → Analysis → Development → Testing → Done.  
-- **Version Control:** All work is tracked through the [GitHub repository](https://github.com/alyamohamed1/v0-unipool-mobile-app).  
+- **Version Control:** All work is tracked through the [GitHub repository]
 - **Collaborative Workflows:** Team members contribute commits and updates regularly to maintain visibility and version consistency.  
 
 Currently, the project has completed the **requirements analysis and initial system design** phase and is preparing to transition into **implementation**.
 
 ---
+## User Guide 
 
+1.⁠ ⁠Running the Application (Using Expo) 
+
+To run the UniPool application locally, follow the steps below: 
+
+1.1 Install Node.js on your computer. 
+
+1.2 Install the Expo Go application on a mobile device (Android or iOS). 
+
+1.3 Clone the UniPool project repository. 
+
+1.4 Open the project folder in a terminal. 
+
+1.5 Run the following commands: 
+
+npm install  
+
+npx expo start 
+
+1.6 A QR code will appear in the terminal or browser. 
+
+1.7 Scan the QR code using the Expo Go app to launch UniPool on the mobile device. 
+
+Once loaded, the application behaves like a regular mobile app. 
 
 ### Summary
 
