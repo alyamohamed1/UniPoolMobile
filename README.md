@@ -20,16 +20,6 @@ By enabling shared rides, the app aims to:
 
 ---
 
-### Core Features
-
-#### For Drivers
-- Accept nearby ride requests easily.  
-- View rider profiles and ratings before accepting.  
-- Communicate directly with riders through in-app chat.  
-- Track passenger pickup locations using live GPS.  
-- Receive notifications for ride requests, updates, and cancellations.  
-- Earn ratings and feedback from riders.  
-- Access incentives and rewards for consistent performance.  
 
 #### For Riders
 - Find and book nearby available drivers.  
