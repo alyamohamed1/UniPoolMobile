@@ -60,3 +60,7 @@ npx expo start
 1.7 Scan the QR code using the Expo Go app to launch UniPool on the mobile device. 
 
 Once loaded, the application behaves like a regular mobile app. 
+
+## Project Status
+
+Prototype student project with core ride-sharing functionality implemented.
